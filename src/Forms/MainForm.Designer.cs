@@ -95,7 +95,7 @@
             this.moveObjectLabel = new System.Windows.Forms.Label();
             this.moveObj = new System.Windows.Forms.PictureBox();
             this.movObj_UpDown = new System.Windows.Forms.PictureBox();
-            this.glControl1 = new OpenTK.GLControl();
+            this.glControl1 = new OpenTK.GLControl(new OpenTK.Graphics.GraphicsMode(new OpenTK.Graphics.ColorFormat(8,8,8,8), 32, 0, 4, new OpenTK.Graphics.ColorFormat(8,8,8,8), 2, false));
             this.menuStrip1.SuspendLayout();
             this.statusStrip1.SuspendLayout();
             this.panel1.SuspendLayout();

@@ -24,7 +24,7 @@ namespace Quad64.src.TestROM
             }
         }
 
-        public static void OpenEmulator()
+        public static void OpenEmulator(MainForm caller)
         {
             bool runProgram = false;
             if (!Globals.pathToEmulator.Equals(""))
@@ -44,13 +44,13 @@ namespace Quad64.src.TestROM
 
                 if (Globals.needToSave && !Globals.autoSaveWhenClickEmulator)
                 {
-                    DialogResult saveResult = Prompts.ShowShouldSaveDialog();
+                    DialogResult saveResult = Prompts.ShowShouldSaveDialog(caller);
                     if (saveResult == DialogResult.Cancel)
                         return;
                 }
                 else if (Globals.needToSave && Globals.autoSaveWhenClickEmulator)
                 {
-                    ROM.Instance.saveFileAs(ROM.Instance.Filepath, ROM.Instance.Endian);
+					caller.runSave();
                 }
 
                 Process p = new Process();

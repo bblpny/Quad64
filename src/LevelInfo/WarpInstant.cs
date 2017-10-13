@@ -5,13 +5,27 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using BubblePony.ExportUtility;
+using Export = BubblePony.Export;
+using BubblePony.Alloc;
 
-namespace Quad64.src.LevelInfo
+namespace Quad64
 {
-    class WarpInstant
-    {
-        
-        private const ushort NUM_OF_CATERGORIES = 2;
+    public sealed class WarpInstant : Export.Reference<WarpInstant>, Export.Reference,
+		IMemoryProperty, ILevelProperty, IROMProperty
+
+	{
+		public readonly Level level;
+		public readonly ByteSegment memory;
+		[Browsable(false)]
+		public Level Level => level;
+		[Browsable(false)]
+		public ROM ROM => level.rom;
+		private string mem_adr;
+		[Browsable(false)]
+		public ByteSegment Memory => memory;
+
+		private const ushort NUM_OF_CATERGORIES = 2;
 
         private byte triggerID;
         [CustomSortedCategory("Instant Warp", 1, NUM_OF_CATERGORIES)]
@@ -27,40 +41,53 @@ namespace Quad64.src.LevelInfo
         [TypeConverter(typeof(HexNumberTypeConverter))]
         public byte AreaID { get { return areaID; } set { areaID = value; } }
 
-        private short teleX;
+        private Vector3s tele;
+
         [CustomSortedCategory("Instant Warp", 1, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("Teleport X")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
-        public short TeleX { get { return teleX; } set { teleX = value; } }
-
-        private short teleY;
+        public short TeleX { get { return tele.X; } set { tele.X = value; } }
+		
         [CustomSortedCategory("Instant Warp", 1, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("Teleport Y")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
-        public short TeleY { get { return teleY; } set { teleY = value; } }
-
-        private short teleZ;
+        public short TeleY { get { return tele.Y; } set { tele.Y = value; } }
+		
         [CustomSortedCategory("Instant Warp", 1, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("Teleport Z")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
-        public short TeleZ { get { return teleZ; } set { teleZ = value; } }
+        public short TeleZ { get { return tele.Z; } set { tele.Z = value; } }
 
-        [CustomSortedCategory("Info", 2, NUM_OF_CATERGORIES)]
-        [Browsable(true)]
-        [Description("Location inside the ROM file")]
-        [DisplayName("Address")]
-        [ReadOnly(true)]
-        public string Address { get; set; }
-        
+		[Browsable(false)]
+		public Vector3s Tele { get => tele; set => tele = value; }
+
+		[CustomSortedCategory("Info", 2, NUM_OF_CATERGORIES)]
+		[Browsable(true)]
+		[Description("Location inside the ROM file")]
+		[DisplayName("Address")]
+		[ReadOnly(true)]
+		public string Address => this.GetAddressString();
+		public WarpInstant(Level level, ByteSegment memory)
+		{
+			if (null == (object)level) throw new ArgumentNullException("level");
+			if (0 == memory.Length) throw new ArgumentException("length is zero", "memory");
+
+			this.level = level;
+			this.memory = memory;
+		}
         public void MakeReadOnly()
         {
             TypeDescriptor.AddAttributes(this, new Attribute[] { new ReadOnlyAttribute(true) });
         }
-
-        public int getROMAddress()
+		
+		void IMemoryProperty.Address(out ByteSegment segment, out ROM_Address address, out string address_string)
+		{
+			IMemoryPropertyUtility.Address(memory, ref mem_adr, out segment, out address, out address_string);
+		}
+		public int getROMAddress()
         {
             return int.Parse(Address.Substring(2), NumberStyles.HexNumber);
         }
@@ -69,31 +96,25 @@ namespace Quad64.src.LevelInfo
         {
             return uint.Parse(Address.Substring(2), NumberStyles.HexNumber);
         }
-
-        private void HideShowProperty(string property, bool show)
-        {
-            PropertyDescriptor descriptor =
-                TypeDescriptor.GetProperties(this.GetType())[property];
-            BrowsableAttribute attrib =
-              (BrowsableAttribute)descriptor.Attributes[typeof(BrowsableAttribute)];
-            FieldInfo isBrow =
-              attrib.GetType().GetField("browsable", BindingFlags.NonPublic | BindingFlags.Instance);
-            isBrow.SetValue(attrib, show);
-        }
+		
 
         public void updateROMData()
         {
-            if (Address.Equals("N/A")) return;
-            ROM rom = ROM.Instance;
-            uint romAddr = getROMUnsignedAddress();
-            rom.writeByte(romAddr + 2, TriggerID);
-            rom.writeByte(romAddr + 3, AreaID);
-            rom.writeHalfword(romAddr + 4, TeleX);
-            rom.writeHalfword(romAddr + 6, TeleY);
-            rom.writeHalfword(romAddr + 8, TeleZ);
-        }
-        
-        private string getWarpName()
+            //if (Address.Equals("N/A")) return;
+            //ROM rom = ROM.Instance;
+            //uint romAddr = getROMUnsignedAddress();
+			var rom = ROM;
+			bool m = false;
+            rom.writeByte(ref m,memory, 2, TriggerID);
+            rom.writeByte(ref m, memory, 3, AreaID);
+            rom.writeHalfword(ref m, memory, 4, TeleX);
+            rom.writeHalfword(ref m, memory, 6, TeleY);
+            rom.writeHalfword(ref m, memory, 8, TeleZ);
+			rom.wrote(m, memory);
+
+		}
+
+		private string getWarpName()
         {
             return " [to Area "+AreaID+"]";
         }
@@ -106,6 +127,23 @@ namespace Quad64.src.LevelInfo
             warpName += TriggerID.ToString("X2") + getWarpName();
             
             return warpName;
-        }
-    }
+		}
+		const uint dat_size = sizeof(byte) * 2 + sizeof(short) * 3 + sizeof(uint);
+		public static Export.ReferenceRegister<WarpInstant> ExportRegister;
+		Export.TypeReference Export.Reference.API() { return ExportRegister.Singleton; }
+		unsafe void Export.Reference<WarpInstant>.API(Export.Exporter ex)
+		{
+			byte* dat = stackalloc byte[(int)dat_size];
+			byte* uchr = dat;
+
+			*uchr++ = this.areaID;
+			*uchr++ = this.triggerID;
+			short* shrt = (short*)uchr;
+			*shrt++ = this.tele.X;
+			*shrt++ = this.tele.Y;
+			*shrt++ = this.tele.Z;
+			*((uint*)shrt) = this.getROMUnsignedAddress();
+			ex.Value(dat, dat_size);
+		}
+	}
 }

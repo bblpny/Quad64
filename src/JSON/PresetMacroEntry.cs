@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Quad64.src.JSON
 {
-    class PresetMacroEntry
+    internal sealed class PresetMacroEntry
     {
         private ushort presetID;
         private byte modelID;

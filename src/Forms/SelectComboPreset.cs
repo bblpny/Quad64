@@ -1,5 +1,4 @@
 ﻿using Quad64.src.JSON;
-using Quad64.src.LevelInfo;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;

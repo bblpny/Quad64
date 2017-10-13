@@ -1,5 +1,4 @@
-﻿using Quad64.src.LevelInfo;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -19,19 +18,20 @@ namespace Quad64
             InitializeComponent();
             this.levelID = levelID;
             ROM rom = ROM.Instance;
-            //comboBox1.Item
-            foreach (KeyValuePair<string, ushort> entry in rom.levelIDs)
-            {
-                comboBox1.Items.Add(entry.Key + " (0x" + entry.Value.ToString("X2") + ")");
-            }
+			//comboBox1.Item
+			foreach (var entry in rom.getLevelEntriesCopy())
+				comboBox1.Items.Add(entry.Title + " (0x" + entry.ID.ToString("X2") + ")");
             //comboBox1.Items.Add("Custom ID value");
-            comboBox1.SelectedIndex = rom.getLevelIndexById(levelID);
+            comboBox1.SelectedIndex = rom.getLevelIndex(levelID);
         }
 
         private void button1_Click(object sender, EventArgs e)
-        {
-            levelID = ROM.Instance.getLevelIdFromIndex(comboBox1.SelectedIndex);
-            changeLevel = true;
+		{
+			if (ROM.Instance.getLevelEntry(comboBox1.SelectedIndex, out LevelEntry entry))
+			{
+				levelID = entry.ID;
+				changeLevel = true;
+			}
             Close();
         }
 

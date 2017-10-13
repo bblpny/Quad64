@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Quad64.src.JSON
 {
-    class ObjectComboEntry
+    internal sealed class ObjectComboEntry
     {
         string name = "";
         ModelCombo modelCombo;

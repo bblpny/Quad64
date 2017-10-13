@@ -1,176 +1,206 @@
 ﻿using OpenTK;
-using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Text;
 
-namespace Quad64.src.Scripts
+namespace Quad64.Scripts
 {
 
-    class ModelBuilder
+    public class ModelBuilder : System.IDisposable
     {
-        public struct FinalMesh
-        {
-            public List<Vector3> vertices;
-            public List<Vector2> texCoords;
-            public List<Vector4> colors;
-            public List<uint> indices;
-        }
-
-        public struct TempMesh
-        {
-            public List<Vector3> vertices;
-            public List<Vector2> texCoords;
-            public List<Vector4> colors;
-            public FinalMesh final;
-        }
-
-        public struct TextureInfo
+		public struct TextureInfo
         {
             public int wrapS, wrapT;
         }
-
+		public GeoModel geoModel;
         public bool processingTexture = false;
 
-        public float currentScale = 1f;
-        private int currentMaterial = -1;
-        public int numTriangles = 0;
-        public int CurrentMaterial { get { return currentMaterial; } }
+		public struct NodeBinder : System.IDisposable
+		{
+			private ModelBuilder builder;
+			private GeoModel Restore;
+			private GeoModel Replace;
+			private volatile bool NeedDispose;
+			public static NodeBinder Bind(ModelBuilder builder, GeoModel node)
+			{
+				if (null != (object)builder)
+				{
+					var nb = new NodeBinder
+					{
+						builder = builder,
+						Restore = System.Threading.Interlocked.Exchange(ref builder.geoModel, node),
+						Replace = node,
+					};
+					nb.NeedDispose = nb.Restore != nb.Replace;
+					if (nb.NeedDispose)
+						return nb;
+				}
+				return default(NodeBinder);
+			}
 
-        private List<Bitmap> textureImages = new List<Bitmap>();
-        private List<uint> textureAddresses = new List<uint>();
-        private List<TextureInfo> textureInfo = new List<TextureInfo>();
+			public void Dispose()
+			{
+				if (NeedDispose &&
+					Replace == System.Threading.Interlocked.CompareExchange(ref builder.geoModel, Restore, Replace))
+					NeedDispose = false;
+			}
+		}
+		private TempMesh currentMaterial;
 
-        public List<Bitmap> TextureImages { get { return textureImages; } }
-        public List<uint> TextureAddresses { get { return textureAddresses; } }
-        public List<TextureInfo> TexInfo { get { return textureInfo; } }
-        private List<TempMesh> TempMeshes = new List<TempMesh>();
-        private FinalMesh finalMesh;
+        public TextureFormats.Raw[] TextureImages {
+			get {
+				TextureFormats.Raw[] all = new TextureFormats.Raw[(int)TempMeshes.count];
+				TempMesh iter;
+				uint iter_pos;
 
-        private Vector3 offset = new Vector3(0, 0, 0);
-        public Vector3 Offset { get { return offset; } set { offset = value; } }
+				for (iter = TempMeshes.first, iter_pos = 0; iter_pos != TempMeshes.count; iter = iter.next, ++iter_pos)
+					all[(int)iter_pos] = iter.references.bmp;
 
-        private FinalMesh newFinalMesh()
-        {
-            FinalMesh m = new FinalMesh();
-            m.vertices = new List<Vector3>();
-            m.texCoords = new List<Vector2>();
-            m.colors = new List<Vector4>();
-            m.indices = new List<uint>();
-            return m;
+				return all;
+			}
+		}
+        internal TempMesh.List TempMeshes;
+		
+		private Vector3 layout_offset = new Vector3(0, 0, 0);
+		const byte ClampBit =2, MirrorBit = 1;
+		const OpenTK.Graphics.OpenGL.TextureWrapMode
+			ClampMirror = OpenTK.Graphics.OpenGL.TextureWrapMode.Repeat,
+			RepeatMirror = OpenTK.Graphics.OpenGL.TextureWrapMode.MirroredRepeat,
+			Repeat = OpenTK.Graphics.OpenGL.TextureWrapMode.Repeat,
+			Clamp = OpenTK.Graphics.OpenGL.TextureWrapMode.ClampToEdge;
+
+		static OpenTK.Graphics.OpenGL.TextureWrapMode WrapMode(byte b)
+		{
+			return (b & MirrorBit) == 0 ?
+				(b & ClampBit) == 0 ? Repeat : Clamp
+				: (b & ClampBit) == 0 ? RepeatMirror : ClampMirror;
+		}
+
+		public TextureInfo newTexInfo(ushort wrapModes)
+		{
+			TextureInfo info = new TextureInfo();
+
+			info.wrapS = (int)WrapMode((byte)(wrapModes >> 8));
+			info.wrapT = (int)WrapMode((byte)(wrapModes & 255));
+			return info;
+		}
+
+		public void AddTexture(TextureFormats.Raw bmp, TextureInfo info, uint segmentAddress, TempMaterial material)
+		{
+			TempMeshData data;
+			data.info = info;
+			data.segmentAddress = segmentAddress;
+			if (null != (object)material)
+			{
+				data.material = material.weakref;
+			}
+			else
+			{
+				data.material = null;
+			}
+			TempMesh.Add(ref TempMeshes, ref data, new TempMeshReferences { bmp = bmp, });
+			currentMaterial = TempMeshes.last;
         }
-        private TempMesh newTempMesh()
+		public TempMesh MaterialFallback
+		{
+			get
+			{
+				if(null==(object)currentMaterial)
+					AddTexture(
+						TextureFormats.ColorTexture(System.Drawing.Color.White),
+						newTexInfo(0),
+						0x00000000,null
+					);
+				return currentMaterial;
+			}
+		}
+		public void AddTempVertex(
+			ref Vertex128 vertex128,
+			ref Vector3 pos,
+			ref Vector2 uv,
+			ref Vector4 color,
+			ref Vector3 normal)
         {
-            TempMesh m = new TempMesh();
-            m.vertices = new List<Vector3>();
-            m.texCoords = new List<Vector2>();
-            m.colors = new List<Vector4>();
-            m.final = newFinalMesh();
-            return m;
-        }
-        public TextureInfo newTexInfo(int wrapS, int wrapT)
-        {
-            TextureInfo info = new TextureInfo();
-            info.wrapS = wrapS;
-            info.wrapT = wrapT;
-            return info;
-        }
+			TempVertexData vertex;
+			Transform transform;
 
-        public void AddTexture(Bitmap bmp, TextureInfo info, uint segmentAddress)
-        {
-            currentMaterial = textureImages.Count;
-            textureImages.Add(bmp);
-            textureAddresses.Add(segmentAddress);
-            textureInfo.Add(info);
-            TempMeshes.Add(newTempMesh());
-        }
+			if (null == geoModel)
+			{
+				transform = Transform.Identity;
+			}
+			else
+			{
+				geoModel.Parent.BuildTransform(out transform);
+				geoModel.AddVertex(MaterialFallback,ref vertex128);
+			}
+			vertex.position = transform.TransformPosition(pos);
+			vertex.texCoord = uv;
+			vertex.color = color;
+			vertex.normal = transform.TransformVectorNoScale(normal);
 
-        public void AddTempVertex(Vector3 pos, Vector2 uv, Vector4 color)
-        {
-            pos += offset;
-            if (currentScale != 1f)
-                pos *= currentScale;
-            //Console.WriteLine("currentMaterial = " + currentMaterial + ", totalCount = " + textureImages.Count);
-            if (currentMaterial == -1)
-            {
-                AddTexture(
-                    TextureFormats.createColorTexture(System.Drawing.Color.White),
-                    newTexInfo((int)OpenTK.Graphics.OpenGL.All.Repeat, (int)OpenTK.Graphics.OpenGL.All.Repeat),
-                    0x00000000
-                );
-            }
-            TempMeshes[currentMaterial].vertices.Add(pos);
-            TempMeshes[currentMaterial].texCoords.Add(uv);
-            TempMeshes[currentMaterial].colors.Add(color);
+			TempVertex.Add(ref MaterialFallback.references.list, ref vertex);
         }
-        /*
-        private void AddFinalVertex(Vector3 pos, Vector2 uv, Vector4 color)
-        {
-            finalMesh.vertices.Add(pos);
-            finalMesh.texCoords.Add(uv);
-            finalMesh.colors.Add(color);
-        }*/
-        
-        private int doesVertexAlreadyExist(int index, Vector3 pos, Vector2 uv, Vector4 col)
-        {
-            TempMesh tmp = TempMeshes[index];
-            for (int i = 0; i < tmp.final.vertices.Count; i++)
-            {
-                Vector3 v = tmp.final.vertices[i];
-                if(pos.X == v.X && pos.Y == v.Y && pos.Z == v.Z)
-                {
-                    Vector2 t = tmp.final.texCoords[i];
-                    if (uv.X == t.X && uv.Y == t.Y)
-                    {
-                        Vector4 c = tmp.final.colors[i];
-                        if (col.X == c.X && col.Y == c.Y && col.Z == c.Z && col.W == c.W)
-                        {
-                            return i;
-                        }
-                    }
-                }
-            }
-            return -1;
-        }
-
         public void BuildData(List<Model3D.MeshData> meshes) {
-            //TextureAtlasBuilder.TextureAtlas atlas = new TextureAtlasBuilder.TextureAtlas(textureImages);
-            //atlas.outputToPNG("TestAtlas.png");
+			if (meshes.Count != 0)
+				System.Console.WriteLine("duplicate");
 
-            finalMesh = newFinalMesh();
-            for (int t = 0; t < TempMeshes.Count; t++)
-            {
-                uint indexCount = 0;
-                meshes.Add(new Model3D.MeshData());
-                //if (t != 0) continue;
-                //TextureAtlasBuilder.TextureAtlas.AtlasEntry atlasEntry = atlas.getEntryFromID((uint)t);
-                Model3D.MeshData md = meshes[t];
-                md.texture = ContentPipe.LoadTexture(textureImages[t]);
-                md.texture.TextureParamS = textureInfo[t].wrapS;
-                md.texture.TextureParamT = textureInfo[t].wrapT;
-                //Console.WriteLine("[Building]: " + (OpenTK.Graphics.OpenGL.All)md.texture.TextureParamS + "," +(OpenTK.Graphics.OpenGL.All)md.texture.TextureParamT);
-                TempMesh temp = TempMeshes[t];
-                for (int i = 0; i < temp.vertices.Count; i++)
-                {
-                    int vExists = doesVertexAlreadyExist(t, temp.vertices[i], temp.texCoords[i], temp.colors[i]);
-                    if (vExists < 0)
-                    {
-                        Vector2 texCoord = temp.texCoords[i];
-                        texCoord.X /= (float)textureImages[t].Width * 32.0f;
-                        texCoord.Y /= (float)textureImages[t].Height * 32.0f;
-                        temp.final.vertices.Add(temp.vertices[i]);
-                        temp.final.texCoords.Add(texCoord);
-                        temp.final.colors.Add(temp.colors[i]);
-                        temp.final.indices.Add(indexCount);
-                        indexCount++;
-                    } else {
-                        temp.final.indices.Add((uint)vExists);
-                    }
-                }
-            }
+			{
+				int target_c = (int)TempMeshes.count + meshes.Count;
+				if (meshes.Capacity < target_c) meshes.Capacity = target_c;
+			}
+
+			Dictionary<TempVertex,TempVertex> vert_temp = null;
+			Model3D.MeshData md;
+			TempMesh mesh_iter;
+			TempVertex vert_iter;
+			uint mesh_iter_n,vert_iter_n,next_ind,u_pos;int v_count;
+			float fw, fh;
+			for (mesh_iter = TempMeshes.first,
+				mesh_iter_n = TempMeshes.count;
+				0 != mesh_iter_n; 
+				mesh_iter = mesh_iter.next,
+				--mesh_iter_n)
+			{
+				v_count = null == (object)(
+					vert_temp = TempVertex.Process(ref mesh_iter.references.list, utilize: vert_temp)
+					) ? 0 : vert_temp.Count;
+				md = new Model3D.MeshData()
+				{
+					vertices = new Vector3[v_count],
+					normals = new Vector3[v_count],
+					colors = new Vector4[v_count],
+					texCoord = new Vector2[v_count],
+					indices = new uint[mesh_iter.references.list.count],
+					texture = ContentPipe.LoadTexture(mesh_iter.references.bmp),
+					material =
+						null == (object)mesh_iter.value.material
+						? Material.Default
+						: ((TempMaterial)mesh_iter.value.material.Target).value,
+				};
+				md.texture.TextureParamS = mesh_iter.value.info.wrapS;
+				md.texture.TextureParamT = mesh_iter.value.info.wrapT;
+				fw = ((uint)mesh_iter.references.bmp.Width << 5);
+				fh = ((uint)mesh_iter.references.bmp.Height << 5);
+				for (
+					u_pos = 0, next_ind = 0,
+					vert_iter = mesh_iter.references.list.first,
+					vert_iter_n = mesh_iter.references.list.count;
+					0 != vert_iter_n;
+					vert_iter = vert_iter.next,
+					u_pos++,
+					--vert_iter_n)
+				{
+					md.indices[u_pos] = vert_iter.index;
+					if (vert_iter.index != next_ind) continue;
+					md.vertices[next_ind] = vert_iter.value.position;
+					md.texCoord[next_ind].X = vert_iter.value.texCoord.X / fw;
+					md.texCoord[next_ind].Y = vert_iter.value.texCoord.Y / fh;
+					md.normals[next_ind] = vert_iter.value.normal;
+					md.colors[next_ind] = vert_iter.value.color;
+					next_ind++;
+				}
+				meshes.Add(md);
+			}
         }
-
+		/*
         public Vector3[] getVertices(int i) {
             return TempMeshes[i].final.vertices.ToArray();
         }
@@ -178,31 +208,52 @@ namespace Quad64.src.Scripts
         public Vector2[] getTexCoords(int i)
         {
             return TempMeshes[i].final.texCoords.ToArray();
-        }
+		}
 
-        public Vector4[] getColors(int i)
-        {
-            return TempMeshes[i].final.colors.ToArray();
-        }
+		public Vector4[] getColors(int i)
+		{
+			return TempMeshes[i].final.colors.ToArray();
+		}
 
-        public uint[] getIndices(int i)
+		public Vector3[] getNormals(int i)
+		{
+			return TempMeshes[i].final.normals.ToArray();
+		}
+
+		public uint[] getIndices(int i)
         {
             return TempMeshes[i].final.indices.ToArray();
         }
-        
-        public bool hasTexture(uint segmentAddress)
-        {
-            int index = 0;
-            foreach (uint addr in textureAddresses)
-            {
-                if (addr == segmentAddress)
-                {
-                    currentMaterial = index;
-                    return true;
-                }
-                index++;
-            }
-            return false;
+        */
+		public bool hasTexture(uint segmentAddress, TempMaterial register)
+		{
+			TempMesh mesh_iter;
+			uint mesh_iter_pos;
+			if (null == (object)register)
+				for (mesh_iter = TempMeshes.first,
+					mesh_iter_pos = TempMeshes.count; 0 != mesh_iter_pos;
+					mesh_iter = mesh_iter.next, --mesh_iter_pos) {
+					if (mesh_iter.value.segmentAddress == segmentAddress && mesh_iter.value.material == null)
+						break;
+				}
+			else
+				for (mesh_iter = TempMeshes.first,
+					mesh_iter_pos = TempMeshes.count; 0 != mesh_iter_pos;
+					mesh_iter = mesh_iter.next, --mesh_iter_pos)
+					if (mesh_iter.value.segmentAddress == segmentAddress && mesh_iter.value.material == register.weakref)
+						break;
+
+			if (mesh_iter_pos != 0)
+			{
+				currentMaterial = mesh_iter;
+				return true;
+			}else
+				return false;
         }
-    }
+		public void Dispose()
+		{
+			TempMesh.Free(ref TempMeshes);
+		}
+
+	}
 }

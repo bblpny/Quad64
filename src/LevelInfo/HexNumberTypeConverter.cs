@@ -5,7 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 
-namespace Quad64.src.LevelInfo
+namespace Quad64
 {
     public class HexNumberTypeConverter : TypeConverter
     {

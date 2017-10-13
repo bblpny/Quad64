@@ -3,11 +3,13 @@ using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using BubblePony.ExportUtility;
+using Export = BubblePony.Export;
 
-namespace Quad64.src.Scripts
+namespace Quad64
 {
 
-    class CollisionTriangleList
+    internal sealed class CollisionTriangleList : Export.Reference<CollisionTriangleList>, Export.Reference
     {
         private int id = 0;
         public List<uint> indicesList;
@@ -43,14 +45,35 @@ namespace Quad64.src.Scripts
         {
             indices = indicesList.ToArray();
         }
-    }
 
-    class CollisionMap
+		public static Export.ReferenceRegister<CollisionTriangleList> ExportRegister;
+		Export.TypeReference Export.Reference.API() { return ExportRegister.Singleton; }
+		void Export.Reference<CollisionTriangleList>.API(Export.Exporter ex)
+		{
+			ex.Value(id);
+			ex.Array(indicesList);
+		}
+	}
+
+    public sealed class CollisionMap : Export.Reference<CollisionMap>, Export.Reference
     {
         private int vbo;
         private List<Vector3> vertices = new List<Vector3>();
         private List<CollisionTriangleList> triangles = new List<CollisionTriangleList>();
         private Vector3[] verts;
+
+		public Vector3[] GetVertices()
+		{
+			return vertices.ToArray();
+		}
+		public uint[][] GetTriangles()
+		{
+			uint[][] each = new uint[triangles.Count][];
+			int i=0;
+			foreach(var tri in triangles)
+				each[i++] = tri.indicesList.ToArray();
+			return each;
+		}
 
         public void AddVertex(Vector3 newVert)
         {
@@ -216,5 +239,13 @@ namespace Quad64.src.Scripts
             GL.DisableClientState(ArrayCap.VertexArray);
             GL.PopMatrix();
         }
-    }
+
+		public static Export.ReferenceRegister<CollisionMap> ExportRegister;
+		Export.TypeReference Export.Reference.API() { return ExportRegister.Singleton; }
+		void Export.Reference<CollisionMap>.API(Export.Exporter ex)
+		{
+			ex.Array(vertices);
+			ex.RefArray(triangles);
+		}
+	}
 }

@@ -1,16 +1,27 @@
 ﻿using Quad64.src.JSON;
-using Quad64.src.LevelInfo;
 using System;
 using System.ComponentModel;
-using System.Globalization;
 using System.Reflection;
-
+using System.Globalization;
+using BubblePony.ExportUtility;
+using Export = BubblePony.Export;
+using OpenTK;
+using BubblePony.Alloc;
 namespace Quad64
 {
+	using Internal;
+	public enum Object3DCategory : sbyte
+	{
+		Object,
+		MacroObject,
+		SpecialObject,
+	}
 
-    class Object3D
+	public sealed class Object3D : Export.Reference<Object3D>,Export.Reference,
+		IROMProperty, ILevelProperty, IMemoryProperty
     {
-        public enum FLAGS {
+		[Flags]
+        public enum FLAGS : uint{
             POSITION_X = 0x1,
             POSITION_Y = 0x2,
             POSITION_Z = 0x4,
@@ -30,9 +41,28 @@ namespace Quad64
             BPARAM_4 = 0x10000,
         }
 
-        private const ushort NUM_OF_CATERGORIES = 7;
+		[Browsable(false)]
+		public Level Level => level;
+		[Browsable(false)]
+		public ByteSegment Memory => memory;
+		[Browsable(false)]
+		public ROM ROM => level.rom;
 
-        bool isBehaviorReadOnly = false;
+		public readonly ByteSegment memory;
+		private string mem_adr;
+		private const ushort NUM_OF_CATERGORIES = 7;
+		private ObjectComboEntry objectComboEntry;
+		private ulong Flags = 0;
+		private ushort presetID;
+		public readonly Object3DCategory Kind;
+		private TransformI trs;
+		private byte modelID = 0;
+		private bool isReadOnly = false;
+		void IMemoryProperty.Address(out ByteSegment segment, out ROM_Address address, out string address_string)
+		{
+			IMemoryPropertyUtility.Address(memory, ref mem_adr, out segment, out address, out address_string);
+		}
+		bool isBehaviorReadOnly = false;
         bool isModelIDReadOnly = false;
         
         [CustomSortedCategory("Info", 1, NUM_OF_CATERGORIES)]
@@ -42,14 +72,13 @@ namespace Quad64
         [ReadOnly(true)]
         public string Title { get; set; }
 
-        [CustomSortedCategory("Info", 1, NUM_OF_CATERGORIES)]
-        [Browsable(true)]
-        [Description("Location inside the ROM file")]
-        [DisplayName("Address")]
-        [ReadOnly(true)]
-        public string Address { get; set; }
+		[CustomSortedCategory("Info", 1, NUM_OF_CATERGORIES)]
+		[Browsable(true)]
+		[Description("Location inside the ROM file")]
+		[DisplayName("Address")]
+		[ReadOnly(true)]
+		public string Address => this.GetAddressString();
         
-        private byte modelID = 0;
         [CustomSortedCategory("Model", 2, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [Description("Model identifer used by the object")]
@@ -65,41 +94,59 @@ namespace Quad64
         [ReadOnly(true)]
         public byte ModelID_ReadOnly { get { return modelID; } }
 
-        private short _xPos, _yPos, _zPos;
         [CustomSortedCategory("Position", 3, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("X")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
-        public short xPos { get { return _xPos; } set { _xPos = value; } }
+        public short xPos { get { return trs.translation.X; } set { trs.translation.X = value; } }
+
         [CustomSortedCategory("Position", 3, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("Y")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
-        public short yPos { get { return _yPos; } set { _yPos = value; } }
+        public short yPos { get { return trs.translation.Y; } set { trs.translation.Y = value; } }
+
         [CustomSortedCategory("Position", 3, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("Z")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
-        public short zPos { get { return _zPos; } set { _zPos = value; } }
+        public short zPos { get { return trs.translation.Z; } set { trs.translation.Z = value; } }
         
-        private short _xRot, _yRot, _zRot;
         [CustomSortedCategory("Rotation", 4, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("RX")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
-        public short xRot { get { return _xRot; } set { _xRot = value; } }
+        public short xRot { get { return trs.rotation.X; } set { trs.rotation.X = value; } }
+
         [CustomSortedCategory("Rotation", 4, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("RY")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
-        public short yRot { get { return _yRot; } set { _yRot = value; } }
+        public short yRot { get { return trs.rotation.Y; } set { trs.rotation.Y = value; } }
+
         [CustomSortedCategory("Rotation", 4, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("RZ")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
-        public short zRot { get { return _zRot; } set { _zRot = value; } }
+        public short zRot { get { return trs.rotation.Z; } set { trs.rotation.Z = value; } }
 
-        [CustomSortedCategory("Behavior", 5, NUM_OF_CATERGORIES)]
+		[Browsable(false)]
+		public short yRot_OddMultiply {
+			set
+			{
+				yRot = (short)(value*1.40625);
+			}
+		}
+		[Browsable(false)]
+		public sbyte yRot_OddMultiply2
+		{
+			set
+			{
+				yRot = (short)(unchecked((byte)value&127) * 2.8125);
+			}
+		}
+
+		[CustomSortedCategory("Behavior", 5, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("Behavior")]
         //[ReadOnly(true)]
@@ -110,7 +157,7 @@ namespace Quad64
         [DisplayName("Behavior")]
         [ReadOnly(true)]
         public string Behavior_ReadOnly { get; set; }
-
+		
         // default names
         private const string BP1DNAME = "B.Param 1";
         private const string BP2DNAME = "B.Param 2";
@@ -174,22 +221,16 @@ namespace Quad64
         [DisplayName("Act 6")]
         public bool Act6 { get; set; }
 
-        private ulong Flags = 0;
-
-        private bool isReadOnly = false;
         [CustomSortedCategory("Misc", NUM_OF_CATERGORIES, NUM_OF_CATERGORIES)]
         [DisplayName("Read-Only")]
         [Browsable(false)]
         public bool IsReadOnly { get { return isReadOnly; } }
 
-        /**************************************************************************************/
+		/**************************************************************************************/
+		
+		public readonly Level level;
 
-        [Browsable(false)]
-        public Level level { get; set; }
-        private ObjectComboEntry objectComboEntry;
-        private ushort presetID;
-
-        public int getROMAddress()
+		public int getROMAddress()
         {
             return int.Parse(Address.Substring(2), NumberStyles.HexNumber);
         }
@@ -229,54 +270,60 @@ namespace Quad64
 
         public void updateROMData()
         {
-            if (Address.Equals("N/A")) return;
-            ROM rom = ROM.Instance;
-            uint romAddr = getROMUnsignedAddress();
+            //if (Address.Equals("N/A")) return;
+			if (Globals.list_selected != (byte)Kind) throw new System.InvalidOperationException();
+			var rom = ROM;
+			bool m = false;
+            //ROM rom = ROM.Instance;
+            //uint romAddr = getROMUnsignedAddress();
             if (Globals.list_selected == 0) // Regular Object
             {
-                rom.writeByte(romAddr + 2, getActMask());
-                rom.writeByte(romAddr + 3, ModelID);
-                rom.writeHalfword(romAddr + 4, xPos);
-                rom.writeHalfword(romAddr + 6, yPos);
-                rom.writeHalfword(romAddr + 8, zPos);
-                rom.writeHalfword(romAddr + 10, xRot);
-                rom.writeHalfword(romAddr + 12, yRot);
-                rom.writeHalfword(romAddr + 14, zRot);
-                rom.writeByte(romAddr + 16, BehaviorParameter1);
-                rom.writeByte(romAddr + 17, BehaviorParameter2);
-                rom.writeByte(romAddr + 18, BehaviorParameter3);
-                rom.writeByte(romAddr + 19, BehaviorParameter4);
-                rom.writeWord(romAddr + 20, getBehaviorAddress());
-            }
-            else if (Globals.list_selected == 1) // Macro Object
+                rom.writeByte(ref m,memory, 2, getActMask());
+                rom.writeByte(ref m,memory, 3, ModelID);
+                rom.writeHalfword(ref m,memory, 4, xPos);
+                rom.writeHalfword(ref m,memory, 6, yPos);
+                rom.writeHalfword(ref m,memory, 8, zPos);
+                rom.writeHalfword(ref m,memory, 10, xRot);
+                rom.writeHalfword(ref m,memory, 12, yRot);
+                rom.writeHalfword(ref m, memory, 14, zRot);
+                rom.writeByte(ref m,memory, 16, BehaviorParameter1);
+                rom.writeByte(ref m,memory, 17, BehaviorParameter2);
+                rom.writeByte(ref m,memory, 18, BehaviorParameter3);
+                rom.writeByte(ref m,memory, 19, BehaviorParameter4);
+                rom.writeWord(ref m, memory, 20, getBehaviorAddress());
+
+			}
+			else if (Globals.list_selected == 1) // Macro Object
             {
                 //Console.WriteLine("Preset ID = 0x" + presetID.ToString("X"));
                 ushort first = (ushort)((((ushort)(yRot / 2.8125f) & 0x7F) << 9) | (presetID & 0x1FF));
-                rom.writeHalfword(romAddr, first);
-                rom.writeHalfword(romAddr + 2, xPos);
-                rom.writeHalfword(romAddr + 4, yPos);
-                rom.writeHalfword(romAddr + 6, zPos);
-                rom.writeByte(romAddr + 8, BehaviorParameter1);
-                rom.writeByte(romAddr + 9, BehaviorParameter2);
-            }
-            else if (Globals.list_selected == 2) // Special Object
+                rom.writeHalfword(ref m,memory, 0, first);
+                rom.writeHalfword(ref m,memory, 2, xPos);
+                rom.writeHalfword(ref m,memory, 4, yPos);
+                rom.writeHalfword(ref m, memory, 6, zPos);
+                rom.writeByte(ref m, memory, 8, BehaviorParameter1);
+				rom.writeByte(ref m, memory, 9, BehaviorParameter2);
+
+			}
+			else if (Globals.list_selected == 2) // Special Object
             {
                 Console.WriteLine("Special Preset ID = 0x" + presetID.ToString("X"));
-                rom.writeHalfword(romAddr, presetID);
-                rom.writeHalfword(romAddr + 2, xPos);
-                rom.writeHalfword(romAddr + 4, yPos);
-                rom.writeHalfword(romAddr + 6, zPos);
+				rom.writeHalfword(ref m,memory, 0, presetID);
+                rom.writeHalfword(ref m,memory, 2, xPos);
+                rom.writeHalfword(ref m,memory, 4, yPos);
+                rom.writeHalfword(ref m, memory, 6, zPos);
                 if (!isHidden(FLAGS.ROTATION_Y))
                 {
-                    rom.writeHalfword(romAddr + 8, (short)(yRot / 1.40625f));
-                    if (!isHidden(FLAGS.BPARAM_1))
-                    {
-                        rom.writeByte(romAddr + 10, BehaviorParameter1);
-                        rom.writeByte(romAddr + 11, BehaviorParameter2);
-                    }
-                }
-            }
-        }
+					rom.writeHalfword(ref m, memory, 8, (short)(yRot / 1.40625f));
+					if (!isHidden(FLAGS.BPARAM_1))
+					{
+						rom.writeByte(ref m, memory, 10, BehaviorParameter1);
+						rom.writeByte(ref m, memory, 11, BehaviorParameter2);
+					}
+				}
+			}
+			rom.wrote(m, memory);
+		}
 
         public void MakeBehaviorReadOnly(bool isReadOnly)
         {
@@ -294,131 +341,142 @@ namespace Quad64
             isReadOnly = true;
         }
 
-        private void HideShowProperty(string property, bool show)
-        {
-            PropertyDescriptor descriptor =
-                TypeDescriptor.GetProperties(this.GetType())[property];
-            BrowsableAttribute attrib =
-              (BrowsableAttribute)descriptor.Attributes[typeof(BrowsableAttribute)];
-            FieldInfo isBrow =
-              attrib.GetType().GetField("browsable", BindingFlags.NonPublic | BindingFlags.Instance);
-
-            if (isBrow != null)
-                isBrow.SetValue(attrib, show);
-        }
         
         private bool isHidden(FLAGS flag)
         {
             return (Flags & (ulong)flag) == (ulong)flag;
         }
 
-        private void updateProperty(string property, FLAGS flag)
+        private void updateProperty(PropertyManipulator property, FLAGS flag)
         {
             if (isHidden(flag))
-                HideShowProperty(property, false);
+                Manipulator.HideShowProperty(property, false);
             else
-                HideShowProperty(property, true);
+				Manipulator.HideShowProperty(property, true);
         }
+		private void updateProperty(string property, FLAGS flag) { updateProperty(Manipulator[property], flag); }
+		private static class ReadonlySuffix
+		{
+			private static readonly System.Collections.Generic.Dictionary<string, string> values = new System.Collections.Generic.Dictionary<string, string>();
+			private static object thread_lock = new object();
+			public static string Get(string property)
+			{
+				string cached;
+				lock (thread_lock)
+					if (!values.TryGetValue(property, out cached))
+					{
+						cached = property + "_ReadOnly";
+						values[property] = cached;
+					}
+				return cached;
+			}
+		}
 
-        private void updateReadOnlyProperty(string property, bool isReadOnly)
+        private void updateReadOnlyProperty(PropertyManipulator property, bool isReadOnly)
         {
             if (isReadOnly)
             {
-                HideShowProperty(property, false);
-                HideShowProperty(property+"_ReadOnly", true);
+                Manipulator.HideShowProperty(property, false);
+                Manipulator.HideShowProperty(property.GetReadonlyPropLookup(), true);
             }
             else
             {
-                HideShowProperty(property, true);
-                HideShowProperty(property+"_ReadOnly", false);
+                Manipulator.HideShowProperty(property, true);
+                Manipulator.HideShowProperty(property.GetReadonlyPropLookup(), false);
             }
-        }
+		}
+		private void updateReadOnlyProperty(string property, bool isReadOnly)
+		{
+			updateReadOnlyProperty(Manipulator[property], isReadOnly);
+		}
 
-        private void ChangePropertyName(string property, string name)
-        {
-            PropertyDescriptor descriptor =
-                TypeDescriptor.GetProperties(this.GetType())[property];
-            DisplayNameAttribute attrib =
-              (DisplayNameAttribute)descriptor.Attributes[typeof(DisplayNameAttribute)];
-            FieldInfo isBrow =
-              attrib.GetType().GetField("_displayName", BindingFlags.NonPublic | BindingFlags.Instance);
-            
-            if (isBrow != null)
-                isBrow.SetValue(attrib, name);
-        }
+		private static class ManipulatorInstance
+		{
+			public static readonly TypeManipulator Manipulator = new TypeManipulator(typeof(Object3D));
+		}
+		internal static TypeManipulator Manipulator => ManipulatorInstance.Manipulator;
+		internal static class PROP
+		{
+			public static readonly PropertyManipulator
+				BehaviorParameter1 = Manipulator["BehaviorParameter1"],
+				BehaviorParameter2 = Manipulator["BehaviorParameter2"],
+				BehaviorParameter3 = Manipulator["BehaviorParameter3"],
+				BehaviorParameter4 = Manipulator["BehaviorParameter4"],
+				xRot = Manipulator["xRot"],
+				yRot = Manipulator["yRot"],
+				zRot = Manipulator["zRot"],
+				Act1 = Manipulator["Act1"],
+				Act2 = Manipulator["Act2"],
+				Act3 = Manipulator["Act3"],
+				Act4 = Manipulator["Act4"],
+				Act5 = Manipulator["Act5"],
+				Act6 = Manipulator["Act6"],
+				AllActs = Manipulator["AllActs"],
+				Behavior = Manipulator["Behavior"],
+				ModelID = Manipulator["ModelID"];
+		}
+#if NO_NEVERMIND
+		private static class PLArray
+		{
+			public static readonly PropertyManipulator[] All;
+			static PLArray()
+			{
+				var Fields = typeof(PROP).GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+				var Temp = new PropertyManipulator[Fields.Length];
+				int i, n, P = 0;
+				for (i = 0, n = Fields.Length, P = 0; i < n; ++i)
+					if (Fields[i].FieldType == typeof(PropertyManipulator))
+						Temp[P++] = (PropertyManipulator)Fields[i].GetValue(null);
+				if (n != P) System.Array.Resize(ref Temp, P);
 
-        private void ChangePropertyDescription(string property, string description)
-        {
-            PropertyDescriptor descriptor =
-                TypeDescriptor.GetProperties(this.GetType())[property];
-            DescriptionAttribute attrib =
-              (DescriptionAttribute)descriptor.Attributes[typeof(DescriptionAttribute)];
-            FieldInfo isBrow =
-              attrib.GetType().GetField("description", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (isBrow != null)
-                isBrow.SetValue(attrib, description);
-        }
-
-        private void UpdatePropertyName(string property, string oce_name, string otherName)
-        {
-            if (oce_name != null && !oce_name.Equals(""))
-                ChangePropertyName(property, oce_name);
-            else
-                ChangePropertyName(property, otherName);
-        }
-
-        private void UpdatePropertyDescription(string property, string oce_desc)
-        {
-            if (oce_desc != null && !oce_desc.Equals(""))
-                ChangePropertyDescription(property, oce_desc);
-            else
-                ChangePropertyDescription(property, "");
-        }
-
-        private void UpdateObjectComboNames()
+				All = Temp;
+			}
+		}
+#endif
+		private void UpdateObjectComboNames()
         {
             if (objectComboEntry != null)
             {
-                UpdatePropertyName("BehaviorParameter1", objectComboEntry.BP1_NAME, BP1DNAME);
-                UpdatePropertyName("BehaviorParameter2", objectComboEntry.BP2_NAME, BP2DNAME);
-                UpdatePropertyName("BehaviorParameter3", objectComboEntry.BP3_NAME, BP3DNAME);
-                UpdatePropertyName("BehaviorParameter4", objectComboEntry.BP4_NAME, BP4DNAME);
-                UpdatePropertyDescription("BehaviorParameter1", objectComboEntry.BP1_DESCRIPTION);
-                UpdatePropertyDescription("BehaviorParameter2", objectComboEntry.BP2_DESCRIPTION);
-                UpdatePropertyDescription("BehaviorParameter3", objectComboEntry.BP3_DESCRIPTION);
-                UpdatePropertyDescription("BehaviorParameter4", objectComboEntry.BP4_DESCRIPTION);
+                Manipulator.UpdatePropertyName(PROP.BehaviorParameter1, objectComboEntry.BP1_NAME, BP1DNAME);
+                Manipulator.UpdatePropertyName(PROP.BehaviorParameter2, objectComboEntry.BP2_NAME, BP2DNAME);
+                Manipulator.UpdatePropertyName(PROP.BehaviorParameter3, objectComboEntry.BP3_NAME, BP3DNAME);
+                Manipulator.UpdatePropertyName(PROP.BehaviorParameter4, objectComboEntry.BP4_NAME, BP4DNAME);
+                Manipulator.UpdatePropertyDescription(PROP.BehaviorParameter1, objectComboEntry.BP1_DESCRIPTION);
+                Manipulator.UpdatePropertyDescription(PROP.BehaviorParameter2, objectComboEntry.BP2_DESCRIPTION);
+                Manipulator.UpdatePropertyDescription(PROP.BehaviorParameter3, objectComboEntry.BP3_DESCRIPTION);
+                Manipulator.UpdatePropertyDescription(PROP.BehaviorParameter4, objectComboEntry.BP4_DESCRIPTION);
             }
             else
             {
-                ChangePropertyName("BehaviorParameter1", BP1DNAME);
-                ChangePropertyName("BehaviorParameter2", BP2DNAME);
-                ChangePropertyName("BehaviorParameter3", BP3DNAME);
-                ChangePropertyName("BehaviorParameter4", BP4DNAME);
-                ChangePropertyDescription("BehaviorParameter1", "");
-                ChangePropertyDescription("BehaviorParameter2", "");
-                ChangePropertyDescription("BehaviorParameter3", "");
-                ChangePropertyDescription("BehaviorParameter4", "");
+                Manipulator.ChangePropertyName(PROP.BehaviorParameter1, BP1DNAME);
+				Manipulator.ChangePropertyName(PROP.BehaviorParameter2, BP2DNAME);
+				Manipulator.ChangePropertyName(PROP.BehaviorParameter3, BP3DNAME);
+				Manipulator.ChangePropertyName(PROP.BehaviorParameter4, BP4DNAME);
+                Manipulator.ChangePropertyDescription(PROP.BehaviorParameter1, string.Empty);
+				Manipulator.ChangePropertyDescription(PROP.BehaviorParameter2, string.Empty);
+				Manipulator.ChangePropertyDescription(PROP.BehaviorParameter3, string.Empty);
+				Manipulator.ChangePropertyDescription(PROP.BehaviorParameter4, string.Empty);
             }
         }
 
         public void UpdateProperties()
         {
-            updateProperty("xRot", FLAGS.ROTATION_X);
-            updateProperty("yRot", FLAGS.ROTATION_Y);
-            updateProperty("zRot", FLAGS.ROTATION_Z);
-            updateProperty("Act1", FLAGS.ACT1);
-            updateProperty("Act2", FLAGS.ACT2);
-            updateProperty("Act3", FLAGS.ACT3);
-            updateProperty("Act4", FLAGS.ACT4);
-            updateProperty("Act5", FLAGS.ACT5);
-            updateProperty("Act6", FLAGS.ACT6);
-            updateProperty("AllActs", FLAGS.ALLACTS);
-            updateProperty("BehaviorParameter1", FLAGS.BPARAM_1);
-            updateProperty("BehaviorParameter2", FLAGS.BPARAM_2);
-            updateProperty("BehaviorParameter3", FLAGS.BPARAM_3);
-            updateProperty("BehaviorParameter4", FLAGS.BPARAM_4);
-            updateReadOnlyProperty("Behavior", isBehaviorReadOnly);
-            updateReadOnlyProperty("ModelID", isModelIDReadOnly);
+            updateProperty(PROP.xRot, FLAGS.ROTATION_X);
+            updateProperty(PROP.yRot, FLAGS.ROTATION_Y);
+            updateProperty(PROP.zRot, FLAGS.ROTATION_Z);
+            updateProperty(PROP.Act1, FLAGS.ACT1);
+            updateProperty(PROP.Act2, FLAGS.ACT2);
+            updateProperty(PROP.Act3, FLAGS.ACT3);
+            updateProperty(PROP.Act4, FLAGS.ACT4);
+            updateProperty(PROP.Act5, FLAGS.ACT5);
+            updateProperty(PROP.Act6, FLAGS.ACT6);
+            updateProperty(PROP.AllActs, FLAGS.ALLACTS);
+            updateProperty(PROP.BehaviorParameter1, FLAGS.BPARAM_1);
+            updateProperty(PROP.BehaviorParameter2, FLAGS.BPARAM_2);
+            updateProperty(PROP.BehaviorParameter3, FLAGS.BPARAM_3);
+            updateProperty(PROP.BehaviorParameter4, FLAGS.BPARAM_4);
+            updateReadOnlyProperty(PROP.Behavior, isBehaviorReadOnly);
+            updateReadOnlyProperty(PROP.ModelID, isModelIDReadOnly);
             UpdateObjectComboNames();
         }
 
@@ -476,5 +534,94 @@ namespace Quad64
         {
             return !isHidden(flag);
         }
-    }
+
+		[Browsable(false)]
+		public TransformI transform { get { return trs; } }
+
+		public bool isBillboard;
+		/// <summary>
+		/// this should be used for picking..
+		/// </summary>
+		public void LoadTransform(out Transform transform)
+		{
+			trs.LoadTransform(out transform);
+		}
+		/// <summary>
+		/// this should be used for rendering/drawing.
+		/// </summary>
+		/// <param name="transform"></param>
+		/// <param name="camera"></param>
+		public void LoadTransform(out Transform transform, ref RenderCamera camera)
+		{
+			trs.LoadTransform(out transform);
+			if (isBillboard) camera.MakeBillboard(ref transform);
+		}
+		[Browsable(false)]
+		public Vector3s pos { get { return trs.translation; } set { trs.translation = value; } }
+		[Browsable(false)]
+		public Vector3s rot { get { return trs.rotation; } set { trs.rotation = value; } }
+		[Browsable(false)]
+		public Quaternion quat => trs.Rotation;
+		const int data_size =
+			sizeof(ulong) +
+			sizeof(uint)+ 
+			sizeof(short) * 6 +
+			sizeof(ushort) * 1 + 
+			sizeof(byte) * 6;
+		public static Export.ReferenceRegister<Object3D> ExportRegister;
+		Export.TypeReference Export.Reference.API() { return ExportRegister.Singleton; }
+		unsafe void Export.Reference<Object3D>.API(Export.Exporter ex)
+		{
+			{
+				byte* data = stackalloc byte[data_size];
+				ulong* ulng = (ulong*)data;
+				*ulng++ = Flags;
+				uint* unt = (uint*)ulng;
+				*unt++ = getBehaviorAddress();
+				short* shrt = (short*)unt;
+				*shrt++ = trs.translation.X;
+				*shrt++ = trs.translation.Y;
+				*shrt++ = trs.translation.Z;
+				*shrt++ = trs.rotation.X;
+				*shrt++ = trs.rotation.Y;
+				*shrt++ = trs.rotation.Z;
+				ushort* ushrt = (ushort*)shrt;
+				*ushrt++ = presetID;
+				byte* uchr = (byte*)ushrt;
+				*uchr++ = modelID;//1
+				*uchr++ = getActMask();//2
+				*uchr++ = BehaviorParameter1;//3
+				*uchr++ = BehaviorParameter2;//4
+				*uchr++ = BehaviorParameter3;//5
+				*uchr++ = BehaviorParameter4;//6
+				if ((uint)(uchr - data) != data_size) throw new System.InvalidOperationException();
+
+				ex.Value(data, (uint)data_size);
+			}
+			ex.Ref(level);
+
+		}
+		public Object3D(Level level, ByteSegment Memory, Object3DCategory Kind)
+		{
+			this.level = level;
+			this.Kind = Kind;
+			this.memory = Memory;
+			this.trs.scale.Whole = 1;
+		}
+		/// <summary>
+		/// called prior to adding to any object list. should return self.
+		/// </summary>
+		/// <returns></returns>
+		internal Object3D PreAdd()
+		{
+			isBillboard |= "0x13002AA4" == Behavior;
+			return this;
+		}
+		public sealed override string ToString()
+		{
+			return string.Format("{0}({1}:{2})", Title,
+				0 == Kind ? "Object" : 1 == (sbyte)Kind ? "Macro" : 2 == (sbyte)Kind ? "Special" : "?",
+				Address??string.Empty);
+		}
+	}
 }

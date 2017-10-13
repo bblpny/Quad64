@@ -5,13 +5,33 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-
-namespace Quad64.src.LevelInfo
+using BubblePony.ExportUtility;
+using Export = BubblePony.Export;
+using BubblePony.Alloc;
+namespace Quad64
 {
-    class Warp
-    {
-        public Warp(bool isPaintingWarp)
+    public sealed class Warp : Export.Reference<Warp>, Export.Reference, IROMProperty,ILevelProperty,IMemoryProperty
+	{
+		public readonly Level level;
+		private string mem_adr;
+		public readonly ByteSegment memory;
+		[Browsable(false)]
+		public Level Level => level;
+		[Browsable(false)]
+		public ROM ROM => level.rom;
+		[Browsable(false)]
+		public ByteSegment Memory => memory;
+		void IMemoryProperty.Address(out ByteSegment segment, out ROM_Address address, out string address_string)
+		{
+			IMemoryPropertyUtility.Address(memory, ref mem_adr, out segment, out address, out address_string);
+		}
+
+		public Warp(Level level, ByteSegment memory,bool isPaintingWarp)
         {
+			if (null == (object)level) throw new ArgumentNullException("level");
+			if (0 == memory.Length) throw new ArgumentException("length is zero", "memory");
+			this.level = level;
+			this.memory = memory;
             this.isPaintingWarp = isPaintingWarp;
         }
         
@@ -19,6 +39,7 @@ namespace Quad64.src.LevelInfo
         private bool isPaintingWarp = false;
 
         private byte warpFrom_ID;
+
         [CustomSortedCategory("Connect Warps", 1, NUM_OF_CATERGORIES)]
         [Browsable(true)]
         [DisplayName("From ID")]
@@ -45,13 +66,13 @@ namespace Quad64.src.LevelInfo
         [DisplayName("To ID")]
         [TypeConverter(typeof(HexNumberTypeConverter))]
         public byte WarpTo_WarpID { get { return warpTo_WarpID; } set { warpTo_WarpID = value; } }
-        
-        [CustomSortedCategory("Info", 2, NUM_OF_CATERGORIES)]
-        [Browsable(true)]
-        [Description("Location inside the ROM file")]
-        [DisplayName("Address")]
-        [ReadOnly(true)]
-        public string Address { get; set; }
+
+		[CustomSortedCategory("Info", 2, NUM_OF_CATERGORIES)]
+		[Browsable(true)]
+		[Description("Location inside the ROM file")]
+		[DisplayName("Address")]
+		[ReadOnly(true)]
+		public string Address => this.GetAddressString();
         
         public void MakeReadOnly()
         {
@@ -60,67 +81,59 @@ namespace Quad64.src.LevelInfo
 
         public int getROMAddress()
         {
-            return int.Parse(Address.Substring(2), NumberStyles.HexNumber);
+            return memory.ByteOffset-level.rom.Bytes.ByteOffset;
         }
 
         public uint getROMUnsignedAddress()
         {
-            return uint.Parse(Address.Substring(2), NumberStyles.HexNumber);
-        }
-
-        private void HideShowProperty(string property, bool show)
-        {
-            PropertyDescriptor descriptor =
-                TypeDescriptor.GetProperties(this.GetType())[property];
-            BrowsableAttribute attrib =
-              (BrowsableAttribute)descriptor.Attributes[typeof(BrowsableAttribute)];
-            FieldInfo isBrow =
-              attrib.GetType().GetField("browsable", BindingFlags.NonPublic | BindingFlags.Instance);
-            isBrow.SetValue(attrib, show);
+			return unchecked((uint)getROMAddress());
         }
 
         public void updateROMData()
         {
-            if (Address.Equals("N/A")) return;
-            ROM rom = ROM.Instance;
-            uint romAddr = getROMUnsignedAddress();
-            rom.writeByte(romAddr + 2, WarpFrom_ID);
-            rom.writeByte(romAddr + 3, WarpTo_LevelID);
-            rom.writeByte(romAddr + 4, WarpTo_AreaID);
-            rom.writeByte(romAddr + 5, WarpTo_WarpID);
+            //if (Address.Equals("N/A")) return;
+            //ROM rom = ROM.Instance;
+            //uint romAddr = getROMUnsignedAddress();
+			var rom = ROM;
+			bool m = false;
+            rom.writeByte(ref m, memory,2, WarpFrom_ID);
+            rom.writeByte(ref m, memory,3, WarpTo_LevelID);
+            rom.writeByte(ref m, memory,4, WarpTo_AreaID);
+            rom.writeByte(ref m, memory,5, WarpTo_WarpID);
+			rom.wrote(m, memory);
         }
 
         private string getLevelName()
         {
-            ROM rom = ROM.Instance;
-            foreach (KeyValuePair<string, ushort> entry in rom.levelIDs)
-            {
-                if (entry.Value == WarpTo_LevelID)
-                    return entry.Key + " ("+warpTo_AreaID+")";
-            }
-            return "Unknown" + " (" + warpTo_AreaID + ")";
+			//ROM rom = ROM.Instance;
+			if(-1 != ROM.getLevelEntry(id:warpTo_LevelID, entry:out LevelEntry entry))
+				return string.Concat(entry.Title," (",warpTo_AreaID.ToString(),")");
+			else
+				return string.Concat("Unknown (", warpTo_AreaID.ToString(), ")");
         }
 
         private string getWarpName()
         {
             if (isPaintingWarp)
             {
-                return " [to "+ getLevelName()+"]";
+                return string.Concat(" [to ", getLevelName(), "]");
             }
             else
             {
+				string prefix;
                 switch (WarpFrom_ID)
                 {
                     case 0xF0:
-                        return " (Success)"+ " [to " + getLevelName() + "]";
+						prefix = " (Success) [to ";break;
                     case 0xF1:
-                        return " (Failure)" + " [to " + getLevelName() + "]";
+						prefix = " (Failure) [to ";break;
                     case 0xF2:
                     case 0xF3:
-                        return " (Special)" + " [to " + getLevelName() + "]";
+						prefix = " (Special) [to ";break;
                     default:
-                        return " [to " + getLevelName() + "]";
+						prefix = " [to ";break;
                 }
+				return string.Concat(prefix, getLevelName(), "]");
             }
         }
 
@@ -128,12 +141,25 @@ namespace Quad64.src.LevelInfo
         {
             //isPaintingWarp
             string warpName = "Warp 0x";
+
             if (isPaintingWarp)
                 warpName = "Painting 0x";
-
-            warpName += WarpFrom_ID.ToString("X2") + getWarpName();
-            
-            return warpName;
+			return string.Concat(warpName,WarpFrom_ID.ToString("X2"), getWarpName());
         }
-    }
+		const uint dat_size=sizeof(byte) * 4 + sizeof(uint);
+		public static Export.ReferenceRegister<Warp> ExportRegister;
+		Export.TypeReference Export.Reference.API() { return ExportRegister.Singleton; }
+		unsafe void Export.Reference<Warp>.API(Export.Exporter ex)
+		{
+			byte* dat = stackalloc byte[(int)dat_size];
+			byte* uchr = dat;
+
+			*uchr ++ = this.warpFrom_ID;
+			*uchr ++ = this.warpTo_AreaID;
+			*uchr ++ = this.warpTo_LevelID;
+			*uchr ++ = this.warpTo_WarpID;
+			*((uint*)uchr)=this.getROMUnsignedAddress();
+			ex.Value(dat, dat_size);
+		}
+	}
 }

@@ -4,7 +4,6 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using PropertyGridExtensionHacks;
-using Quad64.src.LevelInfo;
 using Quad64.Scripts;
 using Quad64.src.JSON;
 using Quad64.src;
@@ -12,6 +11,8 @@ using Quad64.src.Viewer;
 using System.IO;
 using Quad64.src.TestROM;
 using Quad64.src.Forms;
+using BubblePony.PixelFoundation;
+using BubblePony.GLHandle;
 
 namespace Quad64
 {
@@ -22,7 +23,9 @@ namespace Quad64
         Camera camera = new Camera();
         Vector3 savedCamPos = new Vector3();
         Matrix4 camMtx = Matrix4.Identity;
+		readonly RenderList render_list = new RenderList();
         Matrix4 ProjMatrix;
+		private object gl_lock = new object();
         bool isMouseDown = false, isShiftDown = false, moveState = false;
         static Level level;
         float FOV = 1.048f;
@@ -33,28 +36,422 @@ namespace Quad64
 
         private short keepDegreesWithin360(short value)
         {
-            if (value < 0)
-                return (short)(360 + value);
+            if (value <0)
+                return (short)TransformUtility.NormalizeDegrees180(value);
             else
-                return (short)(value % 360);
+                return (short)TransformUtility.NormalizeDegrees(value);
         }
-        
-        public MainForm()
+		static string ExportAddress(BubblePony.Alloc.ByteSegment address)
+		{
+			var adr = address.ROM_Address();
+			if (adr.Data.Length == 0)
+				return adr.Data.Offset.ToString("X8");
+			else
+				return adr.Data.Offset.ToString("X8") + adr.Input.Value.ToString("X16");
+		}
+		const string notExportedString= "<NOT EXPORTED>";
+		string ExportStringFilename(string directory, string filename)
+		{
+			if (0 == filename.Length)
+				return notExportedString;
+
+			if (!Path.IsPathRooted(directory))
+				directory = Path.GetFullPath(directory);
+	
+			if (!Path.IsPathRooted(filename))
+				filename = Path.GetFullPath(filename);
+
+			if (directory == Path.GetDirectoryName(filename))
+				return Path.GetFileName(filename);
+			else
+				return filename;
+		}
+		void PromptObjColors()
+		{
+			var res = MessageBox.Show(
+string.Format(@"Some programs support vertex color through .OBJ but it is not standard.
+
+Want to export vertex colors?
+	(Yes to export vertex colors)
+	(No to omit them)
+	(Cancel to continue to {0} vertex colors)", Globals.wavefrontVertexColors ? "use" : "not use"),
+"Vertex Color", MessageBoxButtons.YesNoCancel);
+
+			if (res == DialogResult.Yes || res == DialogResult.No)
+				Globals.wavefrontVertexColors = DialogResult.Yes == res;
+		}
+		static void HardGC()
+		{
+			GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+		}
+		const string exportImageText = @"imgWWWWHHHHmmmmmmmmmmmmmmmm{0}
+	W=width(hex)
+	H=height(hex)
+	m=MD5 hash of ARGB values
+(MTL references by this naming)
+(Only images in area will be written)";
+		bool Export(
+			Area area = null,
+			bool skip_prompt = false, bool? skip_vertex_color_prompt = null, bool? skip_results=null,
+			string directory = null,
+			string objFile = null,
+			string objCollisionFile = null,
+			string mtlFile = null,
+			string objectName = null,
+			string objectCollisionName = null,
+			IImageFormatter<IntPtr, IntPtr> imageFormat = null,
+			bool skip_images = false,
+			bool skip_gc = false,
+			bool area_only = false)
+		{
+			if (area == null)
+			{
+				var level = MainForm.level;
+				if (null == level)
+					return false;
+				area = level.getCurrentArea();
+				if (null == area)
+					return false;
+			}
+			var levelIDHex = area.level.LevelID.ToString("X2");
+			var areaIDHex = area.AreaID.ToString("X2");
+
+			
+			if(null==directory) directory =
+				 System.IO.Path.Combine(
+				 System.IO.Path.GetDirectoryName(ROM.Instance.filepath),
+				 "Quad64Export_" + System.IO.Path.GetFileNameWithoutExtension(ROM.Instance.filepath));
+
+			if (null == objectName)
+			{
+				objectName = string.Concat("L", levelIDHex, "X", areaIDHex);
+			}
+
+			if (null == objectCollisionName)
+			{
+				objectCollisionName = objectName + "c";
+			}
+			if (null == imageFormat)
+				imageFormat = BubblePony.PixelFoundation.Drawing.Formatter.Png;
+
+			if (null == objFile)
+				objFile = System.IO.Path.Combine(directory, objectName + ".obj");
+
+			if (null == objCollisionFile)
+				objCollisionFile = System.IO.Path.Combine(directory, objectCollisionName + ".obj");
+
+			if (null == mtlFile)
+			{
+				int objIndex = objFile.LastIndexOf(".obj", StringComparison.OrdinalIgnoreCase);
+
+				if (objIndex + 4 != objFile.Length || objIndex <= objFile.LastIndexOf(Path.DirectorySeparatorChar) ||
+					objIndex <= objFile.LastIndexOf(Path.AltDirectorySeparatorChar))
+					mtlFile = System.IO.Path.Combine(directory, objectName + ".mtl");
+				else
+					mtlFile = objFile.Remove(objIndex) + ".mtl";
+			}
+
+			if (
+				(objFile.Length == 0 && mtlFile.Length == 0 && objCollisionFile.Length == 0 && skip_images) ||
+				(!skip_prompt && MessageBox.Show(
+				string.Format(
+@"DIR:	{0}
+MTL:	{1}
+OBJ:	{2}
+COL:	{3}
+TEX:	{4}
+
+Still want to export?",
+directory,
+ExportStringFilename(directory, mtlFile),
+ExportStringFilename(directory, objFile),
+ExportStringFilename(directory, objCollisionFile),
+skip_images ? notExportedString : string.Format(exportImageText, imageFormat.DefaultExtension ?? string.Empty)),
+string.Format("Export of area 0x{1} in level 0x{0}", levelIDHex, areaIDHex),
+MessageBoxButtons.YesNo) != DialogResult.Yes))
+				return false;
+
+			if (!(skip_vertex_color_prompt ?? skip_prompt)) PromptObjColors();
+			if (!PreEmptiveDirectory(objFile) || !PreEmptiveDirectory(mtlFile) || !PreEmptiveDirectory(objCollisionFile) || !PreEmptiveDirectory(skip_images ? string.Empty : System.IO.Path.Combine(directory, "something.extsion")))
+				return false;
+			if (!skip_gc)
+				HardGC();
+
+			long ProcStart=0, ProcObjGen=0, ProcObjWrite=0, ProcMtlWrite=0, ProcTexWrite=0, ProcColGen=0,ProcColWrite=0;
+			ProcStart = System.Diagnostics.Stopwatch.GetTimestamp();
+			bool needsGeoObj = 0 != objFile.Length || 0 != mtlFile.Length || !skip_images;
+			if (needsGeoObj)
+			{
+				var Obj = new BubblePony.Wavefront.Model(Globals.wavefrontVertexColors)
+				{
+					Object = objectName,
+				};
+				var baseGroupName = "g" + objectName;
+				Obj.Group = baseGroupName;
+				foreach (var mesh in area.AreaModel.meshes)
+					Obj += mesh;
+
+				foreach (var item_list in
+					area_only ? new System.Collections.Generic.List<Object3D>[0] :
+					new System.Collections.Generic.List<Object3D>[] { area.Objects, area.MacroObjects, area.SpecialObjects })
+				{
+					var baseListGroupName = baseGroupName +
+							(item_list == area.Objects ? "o" :
+							item_list == area.MacroObjects ? "m" :
+							"s");
+					foreach (var item in item_list)
+					{
+						var oid = item.ModelID;
+						if (0 == oid || !area.level.ModelIDs.TryGetValue(oid, out Model3D m3d) ||
+							m3d.meshes.Count == 0)
+							continue;
+						Obj.Group = string.Concat(baseListGroupName,
+							oid.ToString("X2"),
+							ExportAddress(item.memory));
+						item.LoadTransform(out Transform objectTransform);
+
+						if (!(objectTransform == Transform.Identity))
+							foreach (var mesh in m3d.meshes)
+								Obj += mesh.GetTransformed(objectTransform);
+						else
+							foreach (var mesh in m3d.meshes)
+								Obj += mesh;
+					}
+				}
+				ProcObjGen = System.Diagnostics.Stopwatch.GetTimestamp();
+				if (0 != objFile.Length)
+					using (
+						var ObjStream =
+							System.IO.File.CreateText(objFile)
+							) if (0 == mtlFile.Length)
+							Obj.SaveObj(objFile, ObjStream);
+						else
+							Obj.SaveObj(new string[] { Path.GetFileNameWithoutExtension(mtlFile), },
+								ObjStream);
+				ProcObjWrite = System.Diagnostics.Stopwatch.GetTimestamp();
+
+				if (0 != mtlFile.Length)
+					using (
+						var MtlStream =
+							System.IO.File.CreateText(mtlFile)
+							) if (null == imageFormat)
+							Obj.SaveMtl(MtlStream, ".png");
+						else Obj.SaveMtl(MtlStream, imageFormat);
+				ProcMtlWrite = System.Diagnostics.Stopwatch.GetTimestamp();
+
+				if (!skip_images)
+					Obj.SaveImages(
+						directory, imageFormat);
+
+				ProcTexWrite = System.Diagnostics.Stopwatch.GetTimestamp();
+
+			}
+			if (0 != objCollisionFile.Length)
+			{
+				var Obj = new BubblePony.Wavefront.Model(false)
+				{
+					Object = objectCollisionName,
+				};
+				var v = area.collision.GetVertices();
+				var t_group_N = 0;
+				Vector3 a, b, c;
+				foreach (var tri_list in area.collision.GetTriangles())
+				{
+					Obj.Group = objectName + "C" + t_group_N.ToString("X4"); t_group_N++;
+
+					for (int i = 0; i < tri_list.Length;)
+					{
+						a = v[tri_list[i++]];
+						b = v[tri_list[i++]];
+						c = v[tri_list[i++]];
+
+						Obj.Publish(
+							Obj.Facets[
+								Obj.Positions[a.X, a.Y, a.Z],
+								Obj.Positions[b.X, b.Y, b.Z],
+								Obj.Positions[c.X, c.Y, c.Z]
+								]);
+					}
+					ProcColGen = System.Diagnostics.Stopwatch.GetTimestamp();
+					using (
+						var ObjStream =
+							System.IO.File.CreateText(objCollisionFile)
+							) Obj.SaveObj((string)null, ObjStream);
+				}
+			}
+			ProcColWrite = System.Diagnostics.Stopwatch.GetTimestamp();
+
+			if (!(skip_results??skip_prompt))
+			{
+				if (!needsGeoObj)
+				{
+					ProcObjGen = ProcStart;
+					ProcObjWrite = ProcStart;
+					ProcMtlWrite = ProcStart;
+					ProcTexWrite = ProcStart;
+				}
+
+				MessageBox.Show(
+				string.Format(
+@"PrepObj	{0}
+WriteObj	{1}
+WriteMtl	{2}
+WriteTex	{3}
+PrepCol	{4}
+WriteCol	{5}
+Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcObjGen), TimeString(ProcMtlWrite - ProcObjWrite), TimeString(ProcTexWrite - ProcMtlWrite), TimeString(ProcColGen - ProcMtlWrite), TimeString(ProcColWrite - ProcColGen), TimeString(ProcColWrite - ProcStart)),
+				"Finished", MessageBoxButtons.OK);
+			}
+			if (!skip_gc)
+				HardGC();
+			return true;
+		}
+		static string TimeString(long elapsed)
+		{
+			if (elapsed <= 0) return "--";
+
+			long seconds = elapsed / System.Diagnostics.Stopwatch.Frequency;
+
+			elapsed -= seconds *System.Diagnostics.Stopwatch.Frequency;
+
+			long milliseconds = (elapsed * 1000) / System.Diagnostics.Stopwatch.Frequency;
+
+			elapsed -= (milliseconds * System.Diagnostics.Stopwatch.Frequency) / 1000;
+
+			long nanoseconds =
+				((elapsed * 1000) * 1000) / System.Diagnostics.Stopwatch.Frequency;
+
+			string str = seconds <= 0 ? string.Empty : (seconds + "s");
+
+			if (milliseconds > 0)
+				str += milliseconds + "ms";
+
+			if (nanoseconds > 0)
+				str += nanoseconds + "ns";
+			if (str.Length == 0)
+				str = "--";
+
+
+			return str;
+		}
+		static bool PreEmptiveDirectory(string path)
+		{
+			if (path.Length!=0 && !Directory.Exists(path = Path.GetDirectoryName(path)))
+				try { Directory.CreateDirectory(path); } catch (System.Exception e) { MessageBox.Show(e.ToString(), e.GetType().Name, MessageBoxButtons.OK); return false; }
+			return true;
+		}
+		void ExportButton(object Sender, EventArgs Args)
+		{
+			Export();
+		}
+		void ExportEverythingButton(object Sender, EventArgs Args)
+		{
+			bool firstLevel = true;
+			var rom = ROM.Instance;
+			foreach (var entry in rom.getLevelEntriesCopy())
+			{
+				rom.getSegment(0x15);
+				Level testLevel = new Level(rom, rom.getSegment(0x15), entry.ID, 1);
+
+				LevelScripts.parse(testLevel, 0x15, 0);
+				foreach(var area in testLevel.Areas)
+				{
+					testLevel.CurrentAreaID = area.AreaID;
+					if (firstLevel)
+					{
+						if (!Export(area: testLevel.getCurrentArea(), skip_prompt: false, skip_results:true))
+							return;
+						firstLevel = false;
+					}
+					else Export(area: testLevel.getCurrentArea(), skip_prompt: true);
+				}
+			}
+		}
+		private Timer drainTimer;
+        public MainForm(string rom_path=null)
         {
-            InitializeComponent();
+			InitializeComponent();
+			drainTimer = new Timer()
+			{
+				Enabled = false,
+				Interval = 100,
+			};
+			drainTimer.Tick += OnDrainTick;
             OpenTK.Toolkit.Init();
             glControl1.CreateControl();
             SettingsFile.LoadGlobalSettings("default");
-            glControl1.MouseWheel += new MouseEventHandler(glControl1_Wheel);
-            ProjMatrix = Matrix4.CreatePerspectiveFieldOfView(FOV, (float)glControl1.Width/(float)glControl1.Height, 100f, 100000f);
-            glControl1.Enabled = false;
+			Globals.pathToAutoLoadROM = rom_path ?? Globals.pathToAutoLoadROM;
+			glControl1.MouseWheel += new MouseEventHandler(glControl1_Wheel);
+			UpdateProjection();
+			glControl1.Enabled = false;
             KeyPreview = true;
             treeView1.HideSelection = false;
             camera.updateMatrix(ref camMtx);
-            //foreach(ObjectComboEntry entry in Globals.objectComboEntries) Console.WriteLine(entry.ToString());
-        }
+			fileToolStripMenuItem.DropDownItems.Add("Export Area").Click += ExportButton;
+			fileToolStripMenuItem.DropDownItems.Add("Export Everything").Click += ExportEverythingButton;
+			//foreach(ObjectComboEntry entry in Globals.objectComboEntries) Console.WriteLine(entry.ToString());
+			if (null != (object)rom_path && System.IO.File.Exists(rom_path))
+				Globals.autoLoadROMOnStartup = true;
 
-        private void loadROM(bool startingUp)
+			drainTimer.Enabled = true;
+		}
+		const int DRAIN_INTERVAL_POST_GC_NOTHING = 20 << 5;//~20 seconds.
+		const int DRAIN_INTERVAL_POST_GC_SOMETHING = 80;//~20 seconds.
+		const int DRAIN_INTERVAL_POST_SOMETHING = 60;
+		const int DRAIN_INTERVAL_INIT = 200;
+		const int DRAIN_INTERVAL_PAINT = 500;
+		const int DRAIN_INTERVAL_NOW = 0;
+		const int DRAIN_INTERVAL_BLOCKED = 1;
+		const int DRAIN_PER_PAINT = 8;
+		volatile int paint_counter = 0;
+		private void SetDrainInterval(int value)
+		{
+			if (value <= 0) OnDrainTick(null, null);
+
+			if (drainTimer.Interval <= value)
+				return;
+			drainTimer.Interval = value;
+		}
+		private void OnDrainTick(object sender, EventArgs e)
+		{
+			int id, count;
+			GraphicHandleKind kind;
+			if (System.Threading.Monitor.TryEnter(gl_lock))
+				try
+				{
+					if (!GraphicsHandle.Drain(out id, out kind))
+					{
+						GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
+						if (!GraphicsHandle.Drain(out id, out kind))
+						{
+							drainTimer.Interval = DRAIN_INTERVAL_POST_GC_NOTHING;
+							return;
+						}
+						else
+							drainTimer.Interval = DRAIN_INTERVAL_POST_GC_SOMETHING;
+					}
+					else
+						SetDrainInterval(DRAIN_INTERVAL_POST_SOMETHING);
+					count = 0;
+					do
+					{
+#if DEBUG
+						Console.WriteLine(string.Format("Drained: GraphicsHandle.{0,-20}{{{1,-16}}}.", kind, id));
+#endif
+					} while (++count < 512 && GraphicsHandle.Drain(out id, out kind));
+#if DEBUG
+					Console.WriteLine(string.Format("Finished Drain Tick: Drained {0} objects (Max:512)", count));
+#endif
+				}
+				finally
+				{
+					System.Threading.Monitor.Exit(gl_lock);
+				}
+			else
+				SetDrainInterval(DRAIN_INTERVAL_BLOCKED);
+		}
+
+		private void loadROM(bool startingUp)
         {
             ROM rom = ROM.Instance;
             if (startingUp && !Globals.pathToAutoLoadROM.Equals(""))
@@ -82,8 +479,8 @@ namespace Quad64
             rom.setSegment(0x15, Globals.seg15_location[0], Globals.seg15_location[1], false);
             rom.setSegment(0x02, Globals.seg02_location[0], Globals.seg02_location[1], rom.isSegmentMIO0(0x02));
 
-            level = new Level(0x10, 1);
-            LevelScripts.parse(ref level, 0x15, 0);
+            level = new Level(rom, rom.getSegment(0x15), 0x10, 1);
+            LevelScripts.parse(level, 0x15, 0);
             level.sortAndAddNoModelEntries();
             level.CurrentAreaID = level.Areas[0].AreaID;
             refreshObjectsInList();
@@ -141,26 +538,143 @@ namespace Quad64
                 warps.Nodes.Add(warp.ToString());
             }
         }
-        
-        private void glControl1_Paint(object sender, PaintEventArgs e)
-        {
-            GL.ClearColor(bgColor);
-            if (level != null)
-            {
-                GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-                GL.MatrixMode(MatrixMode.Projection);
-                GL.LoadMatrix(ref ProjMatrix);
-                GL.MatrixMode(MatrixMode.Modelview);
-                GL.LoadMatrix(ref camMtx);
 
-                //level.getCurrentArea().drawPicking();
-                level.getCurrentArea().drawEverything();
+		private void glControl1_Paint(object sender, PaintEventArgs e)
+		{
+			if (DRAIN_PER_PAINT == paint_counter++)
+			{
+				paint_counter -= DRAIN_PER_PAINT;
+				SetDrainInterval(DRAIN_PER_PAINT);
+			}
+
+			lock (gl_lock)
+			{
+				GL_Paint(sender, e);
+			}
+
+		}
+		private void GL_Paint(object sender, PaintEventArgs e) {
+
+			GL.ClearColor(bgColor);
+            if (level != null)
+			{
+				ResetGL();
+				bool camera_change = render_list.SetupCamera(
+					ref camMtx,
+					ref ProjMatrix,
+					camera.Position,
+					camera.Pitch,
+					camera.Yaw);
+				if (camera_change)
+				{
+					UpdateProjection();
+					render_list.SetupCamera(
+						 ref camMtx,
+						 ref ProjMatrix,
+						 camera.Position,
+						 camera.Pitch,
+						 camera.Yaw);
+				}
+					GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+                GL.MatrixMode(MatrixMode.Projection);
+				GL.LoadMatrix(ref render_list.Camera.Proj);
+				//GL.LoadMatrix(ref render_list.Camera.ViewProj);
+				GL.MatrixMode(MatrixMode.Modelview);
+				GL.LoadMatrix(ref render_list.Camera.View);
+				//GL.LoadIdentity();
+				if (Globals.doWireframe)
+					GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
+				else
+					GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+
+	
+
+				//level.getCurrentArea().drawPicking();
+				//level.getCurrentArea().drawEverything();
+				if (Globals.renderCollisionMap)
+					level.getCurrentArea().collision.drawCollisionMap(false);
+
+				render_list.Clear();
+
+//				using (var layer = new RenderList())
+				{
+					level.getCurrentArea().renderEverything(render_list);
+					render_list.UpdateLayers();
+					ResetGL();
+					GL.Disable(EnableCap.AlphaTest);
+					GL.AlphaFunc(AlphaFunction.Always, 0.5f);
+					GL.Disable(EnableCap.Blend);
+					GL.BlendFunc(BlendingFactorSrc.One, BlendingFactorDest.Zero);
+					GL.DepthFunc(DepthFunction.Less);
+					render_list.Solid.Draw();
+					// i haven't found any forum posts about draw layer 2.
+					// from looking at what is on it, it seems that draw layer 2 is dedicated to
+					// solid decals. what i mean by solid decals is polygons that are nearly directly on top of
+					// other solid polygons behind it in layer 1.
+					//
+					// this leads me to believe that the 2nd bit, when present (such as layer 6 (shadows))
+					// should have the depth offset active.. turns out this is probably the case, since shadows would clip otherwise.
+					GL.DepthFunc(DepthFunction.Lequal);
+					GL.PolygonOffset(-1, -1);
+					GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
+					GL.Enable(EnableCap.PolygonOffsetFill);
+					render_list.SolidDecal.Draw();
+					render_list.Decal.Draw();
+					ResetGL();
+					GL.Enable(EnableCap.AlphaTest);
+					GL.AlphaFunc(AlphaFunction.Gequal, 1.0f);
+					render_list.SemiTransparent.Draw();
+					ResetGL();
+					GL.Enable(EnableCap.Blend);
+					GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
+					GL.DepthFunc(DepthFunction.Lequal);
+					GL.PolygonOffset(-1, -1);
+					GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
+					GL.Enable(EnableCap.PolygonOffsetFill);
+					render_list.Shadow.Draw();//<-- shadows.
+					ResetGL();
+					GL.Enable(EnableCap.DepthTest);
+					GL.AlphaFunc(AlphaFunction.Greater, 0f);
+					GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
+					GL.DepthMask(false);
+					render_list.Transparent.Draw();//<-- transparents.
+					ResetGL();
+					//layer.DrawModels((byte)(255 & (~((1 << 4)|(1<<5)|(1<<6)|(1<<1)))), ref Camera);//<-- transparents.
+					// bounds..
+					render_list.DrawBounds();
+
+					if (Globals.doWireframe)
+						GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+				}
+
 
                 glControl1.SwapBuffers();
             }
         }
-        
-        private void selectObject(int mx, int my)
+		public static void ResetGL()
+		{
+			GL.Enable(EnableCap.Blend);
+			GL.Disable(EnableCap.AlphaTest);
+			GL.AlphaFunc(AlphaFunction.Always, 0f);
+			GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
+			GL.Enable(EnableCap.Texture2D);
+			GL.Disable(EnableCap.Normalize);
+			GL.Disable(EnableCap.AutoNormal);
+			GL.Disable(EnableCap.PolygonSmooth);
+			GL.DepthMask(true);
+			GL.DisableClientState(ArrayCap.VertexArray);
+			GL.DisableClientState(ArrayCap.NormalArray);
+			GL.DisableClientState(ArrayCap.ColorArray);
+			GL.DisableClientState(ArrayCap.TextureCoordArray);
+			//GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+			GL.Disable(EnableCap.Fog);
+			GL.Disable(EnableCap.PolygonOffsetFill);
+			GL.CullFace(0); GL.PolygonOffset(0, 0);
+
+
+		}
+
+		private void selectObject(int mx, int my)
         {
             int h = glControl1.Height;
             //Console.WriteLine("Picking... mx = "+mx+", my = "+my);
@@ -256,7 +770,7 @@ namespace Quad64
         private void glControl1_Wheel(object sender, MouseEventArgs e)
         {
             camera.resetMouseStuff();
-            camera.updateCameraMatrixWithScrollWheel((int)(e.Delta * 1.5f), ref camMtx);
+            camera.updateCameraMatrixWithScrollWheel(e.Delta * 1.5, ref camMtx);
             savedCamPos = camera.Position;
             glControl1.Invalidate();
         }
@@ -275,33 +789,36 @@ namespace Quad64
 
         private void glControl1_Load(object sender, EventArgs e)
         {
-            GL.Enable(EnableCap.Blend);
-            GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
+			lock (gl_lock)
+			{
+				GL.Enable(EnableCap.Blend);
+				GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
 
-            GL.Enable(EnableCap.DepthTest);
-            GL.DepthFunc(DepthFunction.Lequal);
+				GL.Enable(EnableCap.DepthTest);
+				GL.DepthFunc(DepthFunction.Lequal);
 
-            GL.Enable(EnableCap.Texture2D);
-            GL.Enable(EnableCap.AlphaTest);
-            GL.AlphaFunc(AlphaFunction.Gequal, 0.5f);
-            
-            if (Globals.doBackfaceCulling)
-                GL.Enable(EnableCap.CullFace);
-            else
-                GL.Disable(EnableCap.CullFace);
+				GL.Enable(EnableCap.Texture2D);
+				GL.Enable(EnableCap.AlphaTest);
+				GL.AlphaFunc(AlphaFunction.Gequal, 0.5f);
+
+				if (Globals.doBackfaceCulling)
+					GL.Enable(EnableCap.CullFace);
+				else
+					GL.Disable(EnableCap.CullFace);
+			}
         }
 
         private void glControl1_Resize(object sender, EventArgs e)
         {
             glControl1.Context.Update(glControl1.WindowInfo);
             GL.Viewport(0, 0, glControl1.Width, glControl1.Height);
-            ProjMatrix = Matrix4.CreatePerspectiveFieldOfView(FOV, (float)glControl1.Width/(float)glControl1.Height, 100f, 100000f);
+			UpdateProjection();
             glControl1.Invalidate();
         }
         
         private void loadROMToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            DialogResult saveResult = Prompts.ShowShouldSaveDialog();
+            DialogResult saveResult = Prompts.ShowShouldSaveDialog(this);
             if(saveResult != DialogResult.Cancel)
                 loadROM(false);
         }
@@ -314,18 +831,40 @@ namespace Quad64
             if (result == DialogResult.OK) // Test result.
             {
                 if(saveFileDialog1.FilterIndex == 1)
-                    ROM.Instance.saveFileAs(saveFileDialog1.FileName, ROM_Endian.BIG);
+					runSave(saveFileDialog1.FileName, ROM_Endian.BIG);
                 else if (saveFileDialog1.FilterIndex == 2)
-                    ROM.Instance.saveFileAs(saveFileDialog1.FileName, ROM_Endian.MIXED);
+                    runSave(saveFileDialog1.FileName, ROM_Endian.MIXED);
                 else if (saveFileDialog1.FilterIndex == 3)
-                    ROM.Instance.saveFileAs(saveFileDialog1.FileName, ROM_Endian.LITTLE);
+                    runSave(saveFileDialog1.FileName, ROM_Endian.LITTLE);
             }
         }
 
         private void saveROMToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            ROM.Instance.saveFileAs(ROM.Instance.Filepath, ROM.Instance.Endian);
+			runSave();
         }
+
+		public DialogResult runSave(string overridePath=null, ROM_Endian ? overrideEndian = null, bool ignore_first_attempt=false)
+		{
+			string message;
+			while (null != (object)(message = ROM.Instance.saveFileAs(
+				overridePath ?? ROM.Instance.filepath,
+				overrideEndian,
+				ignore_first_attempt)))
+			{
+				var res = MessageBox.Show(message, "While saving..", MessageBoxButtons.AbortRetryIgnore);
+				if (res == DialogResult.Ignore)
+					ignore_first_attempt = true;
+				else
+				{
+					if (res != DialogResult.Retry)
+						return res == DialogResult.Abort ? DialogResult.Cancel : res;
+
+					ignore_first_attempt = false;
+				}
+			}
+			return DialogResult.Yes;
+		}
         
         private void settingsToolStripMenuItem_Click(object sender, EventArgs e)
         {
@@ -527,38 +1066,41 @@ namespace Quad64
 
         private void selectLeveToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            //Console.WriteLine("Opening SelectLevelForm!");
-            SelectLevelForm newLevel = new SelectLevelForm(level.LevelID);
-            newLevel.ShowDialog();
-            if (newLevel.changeLevel)
-            {
-                //Console.WriteLine("Changing Level to " + newLevel.levelID);
-                Level testLevel = new Level(newLevel.levelID, 1);
-                LevelScripts.parse(ref testLevel, 0x15, 0);
-                if (testLevel.Areas.Count > 0)
-                {
-                    level = testLevel;
-                    camera.setCameraMode(CameraMode.FLY, ref camMtx);
-                    camera.setLevel(level);
-                    level.sortAndAddNoModelEntries();
-                    level.CurrentAreaID = level.Areas[0].AreaID;
-                    resetObjectVariables();
-                    refreshObjectsInList();
-                    glControl1.Invalidate();
-                    updateAreaButtons();
-                }
-                else
-                {
-                    ushort id = newLevel.levelID;
-                    MessageBox.Show("Error: No areas found in level ID: 0x" + id.ToString("X"));
-                }
-            }
+			//Console.WriteLine("Opening SelectLevelForm!");
+			using (SelectLevelForm newLevel = new SelectLevelForm(level.LevelID))
+			{
+				newLevel.ShowDialog();
+				if (newLevel.changeLevel)
+				{
+					var rom = ROM.Instance;
+					//Console.WriteLine("Changing Level to " + newLevel.levelID);
+					Level testLevel = new Level(rom, rom.getSegment(0x15), newLevel.levelID, 1);
+					LevelScripts.parse(testLevel, 0x15, 0);
+					if (testLevel.Areas.Count > 0)
+					{
+						level = testLevel;
+						camera.setCameraMode(CameraMode.FLY, ref camMtx);
+						camera.setLevel(level);
+						level.sortAndAddNoModelEntries();
+						level.CurrentAreaID = level.Areas[0].AreaID;
+						resetObjectVariables();
+						refreshObjectsInList();
+						glControl1.Invalidate();
+						updateAreaButtons();
+					}
+					else
+					{
+						ushort id = newLevel.levelID;
+						MessageBox.Show("Error: No areas found in level ID: 0x" + id.ToString("X"));
+					}
+				}
+			}
         }
 
 
         private void testROMToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LaunchROM.OpenEmulator();
+            LaunchROM.OpenEmulator(this);
             SettingsFile.SaveGlobalSettings("default");
         }
 
@@ -655,9 +1197,85 @@ namespace Quad64
             FOV = trackBar1.Value * ((float)Math.PI/180.0f);
             if (FOV < 0.1f)
                 FOV = 0.1f;
-            ProjMatrix = Matrix4.CreatePerspectiveFieldOfView(FOV, (float)glControl1.Width / (float)glControl1.Height, 100f, 100000f);
+			UpdateProjection();
             glControl1.Invalidate();
         }
+		private void UpdateProjection()
+		{
+			/*
+			Vector3 min, max;
+			var area = level == null ? null : level.getCurrentArea();
+			if (null == area)
+			{
+				min.Z = min.Y = min.X = short.MinValue;
+				max.Z = max.Y = max.X = short.MaxValue;
+			}
+			else
+			{
+				min = area.AreaModel.LowerBoundary;
+				max = area.AreaModel.UpperBoundary;
+				if (min.X > max.X) { var swap = min.X; min.X = max.X; max.X = swap; }
+				if (min.Y > max.Y) { var swap = min.Y; min.Y = max.Y; max.Y = swap; }
+				if (min.Z > max.Z) { var swap = min.Z; min.Z = max.Z; max.Z = swap; }
+				max.X += 200;
+				max.Y += 200;
+				max.Z += 200;
+				min.X -= 200;
+				min.Y -= 200;
+				min.Z -= 200;
+			}
+			float maxDistance=float.NegativeInfinity, minDistance = float.PositiveInfinity, testDistance;
+			Vector3 point,local_min,local_max;
+			var pos = camera.Position;
+			local_min.Z = local_min.Y = local_min.X = minDistance;
+			local_max.Z = local_max.Y = local_max.X = maxDistance;
+
+			var fwd = Quaternion.FromEulerAngles(camera.Pitch,camera.Yaw,0f).Normalized().Inverted();
+			var Z = camera.forward;
+
+			for (int i = 0; i < 8; i++)
+			{
+				point.X = ((i & 1) == 0 ? min.X : max.X)-pos.X;
+				point.Y = ((i & 2) == 0 ? min.Y : max.Y)-pos.Y;
+				point.Z = ((i & 4) == 0 ? min.Z : max.Z)-pos.Z;
+				Vector3.Dot(ref point, ref Z, out testDistance);
+				point = fwd * point;
+				if (testDistance > maxDistance) maxDistance = testDistance;
+				if (testDistance < minDistance) minDistance = testDistance;
+				if (point.X > local_max.X) local_max.X = point.X;
+				if (point.Y > local_max.Y) local_max.Y = point.Y;
+				if (point.Z > local_max.Z) local_max.Z = point.Z;
+
+				if (point.X < local_min.X) local_min.X = point.X;
+				if (point.Y < local_min.Y) local_min.Y = point.Y;
+				if (point.Z < local_min.Z) local_min.Z = point.Z;
+			}
+			//maxDistance = local_max.Length; minDistance = -local_min.Length;
+			if (minDistance > maxDistance ) { var swap = minDistance; minDistance = maxDistance; maxDistance = swap; }
+			//if (minDistance > maxDistance) {  }
+
+			if (!(minDistance > 100)) minDistance = 100;
+			if (!(maxDistance > 1000)) maxDistance = 1000;
+			if (minDistance >= maxDistance - 100) maxDistance = minDistance+100;
+
+			var ProjMatrixDouble = 
+				Matrix4d.CreatePerspectiveFieldOfView(
+					FOV, 
+					(double)glControl1.Width / glControl1.Height,
+					Math.Sqrt(((double)minDistance * minDistance) * 2),
+					Math.Sqrt(((double)maxDistance * maxDistance )* 2));
+			*/
+			var ProjMatrixDouble = 
+				Matrix4d.CreatePerspectiveFieldOfView(
+					FOV, 
+					(double)glControl1.Width / glControl1.Height,
+					100,
+					69999);
+
+			for (byte r = 0; r < 4; r++)
+				for (byte c = 0; c < 4; c++)
+					ProjMatrix[r, c] = (float)ProjMatrixDouble[r, c];
+		}
 
         private void propertyGrid1_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
         {
@@ -709,7 +1327,7 @@ namespace Quad64
         Taken from: https://stackoverflow.com/a/21199864. This basically makes it 
         so that the object name in the list will always stay highlighted.
         */
-        private void treeView1_DrawNode(object sender, DrawTreeNodeEventArgs e)
+			private void treeView1_DrawNode(object sender, DrawTreeNodeEventArgs e)
         {
             if (e.Node == null) return;
 
@@ -1060,7 +1678,7 @@ namespace Quad64
         {
             if (Globals.needToSave)
             {
-                DialogResult saveResult = Prompts.ShowShouldSaveDialog();
+                DialogResult saveResult = Prompts.ShowShouldSaveDialog(this);
                 e.Cancel = (saveResult == DialogResult.Cancel);
             }
         }

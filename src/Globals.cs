@@ -5,11 +5,21 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Text;
+using BubblePony.Alloc;
 
 namespace Quad64
 {
-    class Globals
+    internal static class Globals
     {
+		// this is just a kilobyte of stack memory set immediately within Main().
+		// do not manipulate the address it is set to.
+		internal static unsafe byte* _kilobyte;
+		// 32 megabytes
+		internal static Allocation _alloc64;
+		public static unsafe byte* kilobyte => _kilobyte;
+		public static unsafe byte* sixtyFourMB => _alloc64.Byte;
+		public static Allocation sixtyFourMBAllocation => _alloc64;
+
         // Render Options
         public static bool doWireframe = false;
         public static bool drawObjectModels = true;
@@ -36,7 +46,12 @@ namespace Quad64
 
         // Keeps track if the user needs to save their changes.
         public static bool needToSave = false;
-        
+
+		// obj doesn't support vertex colors, but many applications treat extra positional values as vertex colors.
+		// setting this to true does the above when exporting.
+		public static bool wavefrontVertexColors=false;
+
+		public static bool delayMID0Compression = true;
         // For the bounding boxes in the area
         public static Color ObjectColor = Color.Red;
         public static Color MacroObjectColor = Color.Blue;
@@ -72,24 +87,29 @@ namespace Quad64
 
         public static List<ObjectComboEntry> objectComboEntries = new List<ObjectComboEntry>();
 
-        public static string getDefaultObjectComboPath()
-        {
-           // Console.WriteLine("ROM.Instance.Region = " + ROM.Instance.Region.ToString());
-            switch (ROM.Instance.Region)
-            {
-                default:
-                case ROM_Region.NORTH_AMERICA:
-                    return "./data/ObjectCombos_NA.json";
-                case ROM_Region.EUROPE:
-                    return "./data/ObjectCombos_EU.json";
-                case ROM_Region.JAPAN:
-                    return "./data/ObjectCombos_JP.json";
-                case ROM_Region.JAPAN_SHINDOU:
-                    return "./data/ObjectCombos_JS.json";
-            }
-        }
-        
-        public static void insertNewEntry(ObjectComboEntry newEntry)
+		public static string getObjectComboPath(this ROM_Region region)
+		{
+			string str;
+			if(ROM_Region.EUROPE==region)
+				str= "./data/ObjectCombos_EU.json";
+			else if(ROM_Region.JAPAN==region)
+				str= "./data/ObjectCombos_JP.json";
+			else if(ROM_Region.JAPAN_SHINDOU==region)
+				str= "./data/ObjectCombos_JS.json";
+			else
+				str= "./data/ObjectCombos_NA.json";
+			return str;
+		}
+		public static string getDefaultObjectComboPath(this ROM rom)
+		{
+			return rom.Region.getObjectComboPath();
+		}
+		public static string getDefaultObjectComboPath()
+		{
+			return ROM.Instance.getDefaultObjectComboPath();
+		}
+
+		public static void insertNewEntry(ObjectComboEntry newEntry)
         {
             for(int i = 0; i < objectComboEntries.Count; i++)
             {

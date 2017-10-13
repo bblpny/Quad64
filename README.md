@@ -5,14 +5,25 @@ An open-source SM64 level editor written in C# 4.0, and uses Windows Forms and O
 
 ## Features
 
-The main focus of the tool is to be like Toads Tool 64, but with better ROM compatibility. 
+The main focus of the tool is to be like Toads Tool 64, but with better ROM compatibility.
 * Both extended ROMs and vanilla (8MB) ROMs that have uncompressed data can be modified.
 * You can modify any of the 4 major regional versions of SM64, which includes: US, Europe, Japan, and Japan (Shindou edition)
 * You can load and save ROM files as big endian(.z64), middle endian(.v64), or little endian(.n64)
 * Supports most of the N64 texture formats: RGBA16, RGBA32, IA16, IA8, IA4, I8, and I4. (CI textures will be interpreted as grayscale)
 
-Note: Macro & Special objects are not editable with the vanilla 8MB ROM, since they are MIO0 compressed. 
-You can use <a href="http://origami64.net/showthread.php?tid=97">queueRAM's sm64extend tool</a> to extend any vanilla ROM file, which will let you edit these objects.
+## Features in this fork..
+
+* More sensitive to GC allocations, optimized for speed.
+* Export everything to wavefront OBJ/MTL (with vertex color for software that supports it, [blender])
+* Partial fixes to rotation issues
+* Shadows and decals on surfaces render correctly
+* More accurate texture colors
+* Address format accompanies items within MIO0
+* Rendering redone, z sorted alpha blending. (WIP)
+* Partial billboard support
+* Fixes..
+
+You can modify MIO0 now, but if the recompressed data doesn't fit you wont be able to save certain changes. You should probably still expand the rom.
 
 
 # Required Libraries
@@ -28,6 +39,12 @@ https://www.nuget.org/packages/OpenTK.GLControl/
 Required for reading/writing JSON files.
 
 http://www.newtonsoft.com/json
+
+## BubblePony.*
+Libraries are included in binary format, source can be found here:
+
+https://github.com/bblpny/csharputilities
+
 
 # License (MIT)
 

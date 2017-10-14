@@ -1,9 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-using OpenTK;
 using OpenTK.Graphics.OpenGL;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -28,6 +23,16 @@ namespace Quad64
 			LoadTextureHandle(bitmap, handle);
 			return new Texture2D(handle, bitmap.Width, bitmap.Height);
 		}
+		private static void LoadTextureHandlePostTexImage2D()
+		{
+
+			GL.TexParameter(TextureTarget.Texture2D,
+				TextureParameterName.TextureMinFilter,
+				(int)TextureMinFilter.Linear);
+			GL.TexParameter(TextureTarget.Texture2D,
+				TextureParameterName.TextureMagFilter,
+				(int)TextureMagFilter.Linear);
+		}
 		private static void LoadTextureHandle(Bitmap bitmap, int id)
         {
             BitmapData bmpData = bitmap.LockBits(
@@ -43,25 +48,33 @@ namespace Quad64
                 PixelType.UnsignedByte,
                 bmpData.Scan0);
             bitmap.UnlockBits(bmpData);
-            GL.TexParameter(TextureTarget.Texture2D,
-                TextureParameterName.TextureMinFilter,
-                (int)TextureMinFilter.Linear);
-            GL.TexParameter(TextureTarget.Texture2D,
-                TextureParameterName.TextureMagFilter,
-                (int)TextureMagFilter.Linear);
+			LoadTextureHandlePostTexImage2D();
+		}
+		private unsafe static void LoadTextureHandle(TextureFormats.Raw bitmap, int id)
+		{
+			GL.BindTexture(TextureTarget.Texture2D, id);
+			fixed(byte *buf=bitmap.ARGB)
+			GL.TexImage2D(TextureTarget.Texture2D,
+				0,
+				PixelInternalFormat.Rgba,
+				bitmap.Width, bitmap.Height, 0,
+				OpenTK.Graphics.OpenGL.PixelFormat.Bgra,
+				PixelType.UnsignedByte,
+				(IntPtr)buf);
+			LoadTextureHandlePostTexImage2D();
 		}
 		internal static void UpdateHandle(
 			TextureFormats.Raw bitmap,
 			ref GraphicsHandle.Texture handle)
 		{
-
+			/*
 			using (var bmp = bitmap.ToBitmap())
 				if (null == (object)bmp)
 				{
 					handle.Delete();
 				}
-				else
-					LoadTextureHandle(bmp, handle);
+				else*/
+			LoadTextureHandle(/*bmp*/ bitmap, handle);
 		}
 		public static Texture2D LoadTexture(TextureFormats.Raw bitmap)
 		{

@@ -52,9 +52,9 @@ namespace Quad64
                 return true;
             return false;
 		}
-		public static System.Drawing.Color IndexColor(int i, int b)
+		public static Color4b IndexColor(int i, int b)
 		{
-			return System.Drawing.Color.FromArgb(i & 255, i >> 8, b);
+			return new Color4b((byte)(i & 255), (byte)((i >> 8)&255), (byte)(b&255));
 		}
 		public static void drawPickingObjects<T>(Level parent, ref T Enumerator, int BColor)
 			where T : IEnumerator<Object3D>

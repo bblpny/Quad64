@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using BubblePony.ExportUtility;
+using BubblePony.GLHandle;
 using Export = BubblePony.Export;
 
 namespace Quad64
@@ -12,38 +13,17 @@ namespace Quad64
     internal sealed class CollisionTriangleList : Export.Reference<CollisionTriangleList>, Export.Reference
     {
         private int id = 0;
-        public List<uint> indicesList;
-        public uint[] indices;
-        public int ibo { get; set; }
-        private Bitmap textureColor;
-        public Texture2D texture;
-        private static Random random = new Random();
+		public CollisionTriangleList next;
+        public ushort[] indices;
+		public GraphicsHandle.Buffer ibo;
+        public readonly TextureFormats.Raw texture;
 
         public CollisionTriangleList(int ID)
         {
             id = ID;
-            indicesList = new List<uint>();
-            textureColor = new Bitmap(1, 1);
-            textureColor.SetPixel(0, 0, 
-                Color.FromArgb(
-                    random.Next(0, 255), 
-                    random.Next(0, 255), 
-                    random.Next(0, 255)
-                )
-            );
-            texture = ContentPipe.LoadTexture(textureColor);
-        }
-
-        public void AddTriangle(uint a, uint b, uint c)
-        {
-            indicesList.Add(a);
-            indicesList.Add(b);
-            indicesList.Add(c);
-        }
-
-        public void buildList()
-        {
-            indices = indicesList.ToArray();
+			texture = TextureFormats.ColorTexture(
+				Color4b.HSV(60+ID*39, (14 - (3+((ID >> 3) & 7))) /14.0,(4-((ID>>6)&3))/4.0)
+				);
         }
 
 		public static Export.ReferenceRegister<CollisionTriangleList> ExportRegister;
@@ -51,27 +31,34 @@ namespace Quad64
 		void Export.Reference<CollisionTriangleList>.API(Export.Exporter ex)
 		{
 			ex.Value(id);
-			ex.Array(indicesList);
+			ex.Array(indices);
 		}
 	}
 
     public sealed class CollisionMap : Export.Reference<CollisionMap>, Export.Reference
     {
-        private int vbo;
+        private GraphicsHandle.Buffer vbo;
         private List<Vector3> vertices = new List<Vector3>();
-        private List<CollisionTriangleList> triangles = new List<CollisionTriangleList>();
+        private CollisionTriangleList tri_first, tri_last;
         private Vector3[] verts;
+		private int tri_count;
+		private struct TriangleInsert
+		{
+			public ushort A, B, C;
+		}
+		private List<TriangleInsert> indicesList = new List<TriangleInsert>();
 
 		public Vector3[] GetVertices()
 		{
 			return vertices.ToArray();
 		}
-		public uint[][] GetTriangles()
+		public ushort[][] GetTriangles()
 		{
-			uint[][] each = new uint[triangles.Count][];
-			int i=0;
-			foreach(var tri in triangles)
-				each[i++] = tri.indicesList.ToArray();
+			ushort[][] each = new ushort[tri_count][];
+			int i;
+			CollisionTriangleList col;
+			for (col = tri_first, i = 0; i < tri_count; col = col.next, ++i)
+				each[i] = col.indices;
 			return each;
 		}
 
@@ -80,15 +67,41 @@ namespace Quad64
             vertices.Add(newVert);
         }
 
-        public void AddTriangle(uint a, uint b, uint c)
+        public void AddTriangle(ushort a, ushort b, ushort c)
         {
-            if (triangles.Count > 0)
-                triangles[triangles.Count - 1].AddTriangle(a, b, c);
+			if (tri_count == 0) throw new System.InvalidOperationException();
+			indicesList.Add(new TriangleInsert { A = a, B = b, C = c, });
         }
-
+		private ushort[] DumpIndices()
+		{
+			int i, j;
+			var o = new ushort[(j = indicesList.Count) * 3];
+			TriangleInsert insert;
+			for (i = j - 1; i >= 0; --i)
+			{
+				insert = indicesList[i];
+				o[(j = (i * 3))] = insert.A;
+				o[1 + j] = insert.B;
+				o[2 + j] = insert.C;
+			}
+			indicesList.Clear();
+			return o;
+		}
         public void NewTriangleList(int ID)
         {
-            triangles.Add(new CollisionTriangleList(ID));
+			if (0 == tri_count++)
+			{
+				tri_first = new CollisionTriangleList(ID);
+				tri_last = tri_first;
+				tri_first.next = tri_first;
+			}
+			else
+			{
+				tri_last.indices = DumpIndices();
+				tri_last.next = new CollisionTriangleList(ID);
+				tri_last = tri_last.next;
+				tri_last.next = tri_first;
+			}
         }
 
 
@@ -125,12 +138,16 @@ namespace Quad64
         }
 
         public short dropToGround(Vector3 pos)
-        {
-            List<float> found = new List<float>();
-            for (int i = 0; i < triangles.Count; i++)
+		{
+
+			float highestY = -0x2000;
+			CollisionTriangleList list;
+			int i, j;
+			float d;
+			bool any=false;
+            for (list = tri_first, i = 0; i < tri_count; list=list.next, ++i)
             {
-                CollisionTriangleList list = triangles[i];
-                for (int j = 0; j < list.indices.Length; j += 3)
+                for (j = 0; j < list.indices.Length; j += 3)
                 {
                     tempTriangle temp;
                     temp.a = new Vector3(vertices[(int)list.indices[j + 0]]);
@@ -138,28 +155,26 @@ namespace Quad64
                     temp.c = new Vector3(vertices[(int)list.indices[j + 2]]);
                     if (PointInTriangle(pos.Xz, temp.a.Xz, temp.b.Xz, temp.c.Xz))
                     {
-                        found.Add(barryCentric(temp.a, temp.b, temp.c, pos));
+						any = true;
+                        d=barryCentric(temp.a, temp.b, temp.c, pos);
+						if (d > highestY)
+							highestY = d;
                     }
                 }
             }
-            if (found.Count == 0)
-                return (short)pos.Y;
 
-            float highestY = -0x2000;
-            // Console.WriteLine("Found " + found.Count + " triangles under position");
-            for (int i = 0; i < found.Count; i++)
-            {
-                if (found[i] > highestY)
-                    highestY = found[i];
-            }
+            if (!any)
+                return (short)pos.Y;
             return (short)highestY;
         }
 
         public void buildCollisionMap()
         {
+			CollisionTriangleList list;
+			int i;
             verts = vertices.ToArray();
 
-            vbo = GL.GenBuffer();
+			vbo.Gen();
             GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
             GL.BufferData(
                 BufferTarget.ArrayBuffer,
@@ -168,15 +183,20 @@ namespace Quad64
                 BufferUsageHint.StaticDraw
                 );
 
-            for (int i = 0; i < triangles.Count; i++)
+			if (tri_count!=0 && null != indicesList)
+			{
+				tri_last.indices = DumpIndices();
+				indicesList = null;
+			}
+
+            for (list=tri_first, i = 0; i < tri_count; list=list.next, ++i)
             {
-                triangles[i].buildList();
-                triangles[i].ibo = GL.GenBuffer();
-                GL.BindBuffer(BufferTarget.ElementArrayBuffer, triangles[i].ibo);
+				list.ibo.Gen();
+                GL.BindBuffer(BufferTarget.ElementArrayBuffer, list.ibo);
                 GL.BufferData(
                     BufferTarget.ElementArrayBuffer,
-                    (IntPtr)(sizeof(uint) * triangles[i].indices.Length),
-                    triangles[i].indices,
+                    (IntPtr)(list.indices.Length<<1),
+                    list.indices,
                     BufferUsageHint.StaticDraw
                 );
             }
@@ -184,15 +204,17 @@ namespace Quad64
 
         public void drawCollisionMap(bool drawAsBlack)
         {
+			CollisionTriangleList l;
+			int i;
             GL.PushMatrix();
             GL.EnableClientState(ArrayCap.VertexArray);
             if (drawAsBlack) // Used as part of color picking
                 GL.BlendFunc(BlendingFactorSrc.Zero, BlendingFactorDest.Zero);
-            for (int i = 0; i < triangles.Count; i++)
-            {
-                CollisionTriangleList l = triangles[i];
-                //if (m.vertices == null || m.indices == null) return;
-                GL.BindTexture(TextureTarget.Texture2D, l.texture.ID);
+
+			for (l = tri_first, i = 0; i < tri_count; l = l.next, ++i)
+			{
+				//if (m.vertices == null || m.indices == null) return;
+				GL.BindTexture(TextureTarget.Texture2D, l.texture.GetLoadedHandle());
                 GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
                 GL.VertexPointer(3, VertexPointerType.Float, 0, IntPtr.Zero);
                 if (Globals.doWireframe)
@@ -202,7 +224,7 @@ namespace Quad64
 
                 GL.BindBuffer(BufferTarget.ElementArrayBuffer, l.ibo);
                 GL.DrawElements(PrimitiveType.Triangles, l.indices.Length,
-                    DrawElementsType.UnsignedInt, IntPtr.Zero);
+                    DrawElementsType.UnsignedShort, IntPtr.Zero);
 
                 if (Globals.doWireframe)
                     GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
@@ -217,22 +239,23 @@ namespace Quad64
         }
 
         public void drawCollisionMapOutline()
-        {
-            GL.PushMatrix();
+		{
+			CollisionTriangleList l;
+			int i;
+			GL.PushMatrix();
             GL.EnableClientState(ArrayCap.VertexArray);
             GL.BlendFunc(BlendingFactorSrc.Zero, BlendingFactorDest.Zero);
-            for (int i = 0; i < triangles.Count; i++)
-            {
-                CollisionTriangleList l = triangles[i];
+			for (l = tri_first, i = 0; i < tri_count; l = l.next, ++i)
+			{
                 //if (m.vertices == null || m.indices == null) return;
-                GL.BindTexture(TextureTarget.Texture2D, l.texture.ID);
+                GL.BindTexture(TextureTarget.Texture2D, l.texture.GetLoadedHandle());
                 GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
                 GL.VertexPointer(3, VertexPointerType.Float, 0, IntPtr.Zero);
                 GL.BindBuffer(BufferTarget.ElementArrayBuffer, l.ibo);
                 GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
                 GL.BindBuffer(BufferTarget.ElementArrayBuffer, l.ibo);
                 GL.DrawElements(PrimitiveType.Triangles, l.indices.Length,
-                    DrawElementsType.UnsignedInt, IntPtr.Zero);
+                    DrawElementsType.UnsignedShort, IntPtr.Zero);
                 GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
             }
             GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
@@ -244,8 +267,8 @@ namespace Quad64
 		Export.TypeReference Export.Reference.API() { return ExportRegister.Singleton; }
 		void Export.Reference<CollisionMap>.API(Export.Exporter ex)
 		{
-			ex.Array(vertices);
-			ex.RefArray(triangles);
+			//ex.Array(vertices);
+			//ex.RefArray(triangles);
 		}
 	}
 }

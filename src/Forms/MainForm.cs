@@ -605,6 +605,8 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 
 //				using (var layer = new RenderList())
 				{
+					var options = Globals.doBackfaceCulling ? (GeoDrawOptions)0 : GeoDrawOptions.NoCullingChanges;
+
 					level.getCurrentArea().renderEverything(render_list);
 					render_list.UpdateLayers();
 					ResetGL();
@@ -613,7 +615,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					GL.Disable(EnableCap.Blend);
 					GL.BlendFunc(BlendingFactorSrc.One, BlendingFactorDest.Zero);
 					GL.DepthFunc(DepthFunction.Less);
-					render_list.Solid.Draw();
+					render_list.Solid.Draw(options);
 					// i haven't found any forum posts about draw layer 2.
 					// from looking at what is on it, it seems that draw layer 2 is dedicated to
 					// solid decals. what i mean by solid decals is polygons that are nearly directly on top of
@@ -625,12 +627,12 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					GL.PolygonOffset(-1, -1);
 					GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
 					GL.Enable(EnableCap.PolygonOffsetFill);
-					render_list.SolidDecal.Draw();
-					render_list.Decal.Draw();
+					render_list.SolidDecal.Draw(options);
+					render_list.Decal.Draw(options);
 					ResetGL();
 					GL.Enable(EnableCap.AlphaTest);
 					GL.AlphaFunc(AlphaFunction.Gequal, 1.0f);
-					render_list.SemiTransparent.Draw();
+					render_list.SemiTransparent.Draw(options);
 					ResetGL();
 					GL.Enable(EnableCap.Blend);
 					GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
@@ -638,13 +640,13 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					GL.PolygonOffset(-1, -1);
 					GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
 					GL.Enable(EnableCap.PolygonOffsetFill);
-					render_list.Shadow.Draw();//<-- shadows.
+					render_list.Shadow.Draw(options);//<-- shadows.
 					ResetGL();
 					GL.Enable(EnableCap.DepthTest);
 					GL.AlphaFunc(AlphaFunction.Greater, 0f);
 					GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
 					GL.DepthMask(false);
-					render_list.Transparent.Draw();//<-- transparents.
+					render_list.Transparent.Draw(options);//<-- transparents.
 					ResetGL();
 					//layer.DrawModels((byte)(255 & (~((1 << 4)|(1<<5)|(1<<6)|(1<<1)))), ref Camera);//<-- transparents.
 					// bounds..

@@ -10,18 +10,23 @@ namespace Quad64
 {
     public sealed class Texture2D : Export.Reference<Texture2D>,Export.Reference
     {
-        private GraphicsHandle.Texture id;
+        private TextureFormats.Raw raw;
         private int width, height;
 
-        public int ID { get { return id; } }
+		[System.Diagnostics.DebuggerBrowsable(System.Diagnostics.DebuggerBrowsableState.Never)]
+		public int ID { get { return raw.GetLoadedHandle(); } }
+
         public int Width { get { return width; } }
         public int Height { get { return height; } }
         public int TextureParamS { get; set; }
         public int TextureParamT { get; set; }
+		public TextureFormats.Raw Raw => raw;
 
-        internal Texture2D(GraphicsHandle.Texture handle, int width, int height)
+        internal Texture2D(TextureFormats.Raw handle, int width, int height)
         {
-            this.id = handle;
+			if (null == handle) throw new ArgumentNullException("handle");
+
+            this.raw = handle;
             this.width = width;
             this.height = height;
         }
@@ -31,12 +36,11 @@ namespace Quad64
 		unsafe void Export.Reference<Texture2D>.API(Export.Exporter ex)
 		{
 			{
-				int* members = stackalloc int[5];
-				members[0] = id;
-				members[1] = width;
-				members[2] = height;
-				members[3] = TextureParamS;
-				members[4] = TextureParamT;
+				int* members = stackalloc int[4];
+				members[0] = width;
+				members[1] = height;
+				members[2] = TextureParamS;
+				members[3] = TextureParamT;
 				ex.Value(members,5);
 			}
 		}

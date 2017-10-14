@@ -8,24 +8,21 @@ using BubblePony.GLHandle;
 namespace Quad64
 {
     static class ContentPipe
-    {
-        public static Texture2D LoadTexture(string filepath)
+	{
+		
+        public static Texture2D LoadTexture(string filepath, int s, int t, object tag = null)
         {
-            return LoadTexture(new Bitmap(filepath));
+			using(var bitmap= new Bitmap(filepath))
+	            return LoadTexture(bitmap,s,t,tag);
         }
-
-		public static Texture2D LoadTexture(Bitmap bitmap)
+		public unsafe static Texture2D LoadTexture(Bitmap bitmap, int s, int t, object tag=null)
 		{
-			if (null == bitmap) return null;
-
-			GraphicsHandle.Texture handle = default(GraphicsHandle.Texture);
-			handle.Gen();
-			LoadTextureHandle(bitmap, handle);
-			return new Texture2D(handle, bitmap.Width, bitmap.Height);
+			return null == (object)bitmap ? null : LoadTexture(
+				TextureFormats.FromBitmap(bitmap, tag),
+				s, t);
 		}
 		private static void LoadTextureHandlePostTexImage2D()
 		{
-
 			GL.TexParameter(TextureTarget.Texture2D,
 				TextureParameterName.TextureMinFilter,
 				(int)TextureMinFilter.Linear);
@@ -76,7 +73,7 @@ namespace Quad64
 				else*/
 			LoadTextureHandle(/*bmp*/ bitmap, handle);
 		}
-		public static Texture2D LoadTexture(TextureFormats.Raw bitmap)
+		public static Texture2D LoadTexture(TextureFormats.Raw bitmap, int s, int t)
 		{
 			if (null == bitmap)
 				return null;
@@ -85,7 +82,9 @@ namespace Quad64
 				if (bitmap.CreateHandle(out GraphicsHandle.Texture handle))
 					UpdateHandle(bitmap, ref handle);
 
-				return handle.Alive != GraphicsHandle.Null ? new Texture2D(handle, bitmap.Width, bitmap.Height) : null;
+				return handle.Alive != GraphicsHandle.Null ? 
+					new Texture2D(bitmap, bitmap.Width, bitmap.Height) { TextureParamS = s, TextureParamT = t, } : 
+					null;
 			}
 		}
 		public static unsafe Bitmap ToBitmap(this TextureFormats.Raw bitmap)

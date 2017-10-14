@@ -125,7 +125,39 @@ namespace Quad64
 				this.Tag = Tag;
 			}
 		}
+		public static unsafe Raw FromBitmap(System.Drawing.Bitmap bitmap, object tag = null)
+		{
 
+			if (null == bitmap)
+				return null;
+
+			var w = (ushort)bitmap.Width;
+			var h = (ushort)bitmap.Height;
+			int put = (w * h) << 2;
+			byte[] raw = new byte[put];
+			var bmpData = bitmap.LockBits(
+				new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height),
+				System.Drawing.Imaging.ImageLockMode.ReadOnly,
+				System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+			try
+			{
+				var st = bmpData.Stride;
+				int x, y;
+				byte* inrow, rawrow;
+				byte* inptr = (byte*)bmpData.Scan0.ToPointer();
+				fixed (byte* raw_0 = raw)
+					for (y = h - 1; y >= 0; --y)
+						for (inrow = &inptr[y * st],
+							rawrow = &raw_0[y * w],
+							x = (w << 2) - 1; x >= 0; --x)
+							rawrow[x] = inrow[x];
+			}
+			finally
+			{
+				bitmap.UnlockBits(bmpData);
+			}
+			return new Raw(raw, w, h, GetFormat(0x18/*<--argb*/), tag);
+		}
 		private struct Color : FormatDescription
 		{
 			byte FormatDescription.AlphaDepth => 8;

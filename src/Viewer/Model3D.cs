@@ -9,6 +9,7 @@ using Wavefront = BubblePony.Wavefront;
 using Export = BubblePony.Export;
 using System.Runtime.InteropServices;
 using BubblePony.GLHandle;
+using System.Diagnostics;
 namespace Quad64
 {
 	using Temporary = BubblePony.Temporary;
@@ -269,8 +270,119 @@ namespace Quad64
             public uint[] indices;
             public Texture2D texture;
 			public Material material;
-			public GraphicsHandle.Buffer vbo, ibo, texBuf, colorBuf, normalBuf;
 
+			private GraphicsHandle.Buffer _vbo, _ibo, _texBuf, _colorBuf, _normalBuf;
+
+			public void invalidateBuffers()
+			{
+				// these will all be garbage collected (so long as nothing else holds a reference to them, of course)
+				_vbo = _ibo = _texBuf = _colorBuf = _normalBuf = default(GraphicsHandle.Buffer);
+			}
+
+			[DebuggerBrowsable(DebuggerBrowsableState.Never)]
+			public int vbo
+			{
+				get
+				{
+					if (_vbo.Alive == GraphicsHandle.Null)
+					{
+						_vbo.Gen();
+						var restore = GL.GetInteger(GetPName.ArrayBufferBinding);
+						GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
+						GL.BufferData(
+							BufferTarget.ArrayBuffer,
+							(IntPtr)(Vector3.SizeInBytes * vertices.Length),
+							vertices,
+							BufferUsageHint.StaticDraw
+							);
+						GL.BindBuffer(BufferTarget.ArrayBuffer, restore);
+					}
+					return vbo;
+				}
+			}
+			[DebuggerBrowsable(DebuggerBrowsableState.Never)]
+			public int texBuf
+			{
+				get
+				{
+					if (_texBuf.Alive == GraphicsHandle.Null)
+					{
+						_texBuf.Gen();
+						var restore = GL.GetInteger(GetPName.ArrayBufferBinding);
+						GL.BindBuffer(BufferTarget.ArrayBuffer, _texBuf);
+						GL.BufferData(
+							BufferTarget.ArrayBuffer,
+							(IntPtr)(Vector2.SizeInBytes * texCoord.Length),
+							texCoord,
+							BufferUsageHint.StaticDraw
+							);
+						GL.BindBuffer(BufferTarget.ArrayBuffer, restore);
+					}
+					return _texBuf;
+				}
+			}
+			[DebuggerBrowsable(DebuggerBrowsableState.Never)]
+			public int colorBuf
+			{
+				get
+				{
+					if (_colorBuf.Alive == GraphicsHandle.Null)
+					{
+						_colorBuf.Gen();
+						var restore = GL.GetInteger(GetPName.ArrayBufferBinding);
+						GL.BindBuffer(BufferTarget.ArrayBuffer, _colorBuf);
+						GL.BufferData(
+							BufferTarget.ArrayBuffer,
+							(IntPtr)(Vector4.SizeInBytes * colors.Length),
+							colors,
+							BufferUsageHint.StaticDraw
+							);
+						GL.BindBuffer(BufferTarget.ArrayBuffer, restore);
+					}
+					return _colorBuf;
+				}
+			}
+			[DebuggerBrowsable(DebuggerBrowsableState.Never)]
+			public int normalBuf
+			{
+				get
+				{
+					if (_normalBuf.Alive == GraphicsHandle.Null)
+					{
+						_normalBuf.Gen();
+						var restore = GL.GetInteger(GetPName.ArrayBufferBinding);
+						GL.BindBuffer(BufferTarget.ArrayBuffer, _normalBuf);
+						GL.BufferData(
+							BufferTarget.ArrayBuffer,
+							(IntPtr)(Vector3.SizeInBytes * normals.Length),
+							normals,
+							BufferUsageHint.StaticDraw
+							);
+						GL.BindBuffer(BufferTarget.ArrayBuffer, restore);
+					}
+					return _normalBuf;
+				}
+			}
+			[DebuggerBrowsable(DebuggerBrowsableState.Never)]
+			public int ibo {
+				get
+				{
+					if (_ibo.Alive == GraphicsHandle.Null)
+					{
+						_ibo.Gen();
+						var restore = GL.GetInteger(GetPName.ElementArrayBufferBinding);
+						GL.BindBuffer(BufferTarget.ElementArrayBuffer, _ibo);
+						GL.BufferData(
+							BufferTarget.ElementArrayBuffer,
+							(IntPtr)(sizeof(uint) * indices.Length),
+							indices,
+							BufferUsageHint.StaticDraw
+							);
+						GL.BindBuffer(BufferTarget.ElementArrayBuffer, restore);
+					}
+					return _ibo;
+				}
+			}
 			private Wavefront.Material GenerateMaterial(Wavefront.Model Model)
 			{
 				Wavefront.MaterialFilter Kd = default(Wavefront.MaterialFilter);
@@ -578,17 +690,12 @@ namespace Quad64
 			{
 				return new MeshData
 				{
-					ibo = ibo,
-					colorBuf = colorBuf,
 					colors = colors,
 					indices = indices,
 					material = material,
-					normalBuf = normalBuf,
 					normals = RotateCopy(normals, transform.rotation),
-					texBuf = texBuf,
 					texCoord = texCoord,
 					texture = texture,
-					vbo = vbo,
 					vertices = TransformCopy(vertices, transform),
 				};
 			}
@@ -600,127 +707,130 @@ namespace Quad64
         public Vector3 UpperBoundary { get { return upper; } }
         public Vector3 LowerBoundary { get { return lower; } }
         public uint GeoDataSegAddress { get; set; }
-        public ModelBuilder builder = new ModelBuilder();
+        internal ModelBuilder builder = new ModelBuilder();
         public readonly List<MeshData> meshes = new List<MeshData>();
-
+		/*
         private readonly HashSet<uint> geoDisplayLists = new HashSet<uint>();
 
         public bool hasGeoDisplayList(uint value)
         {
 			return !geoDisplayLists.Add(value);
-        }
+        }*/
+		private struct MinMax
+		{
+			public Vector3 min, max;
+			public Vector3 center => new Vector3
+			{
+				X = min.X + (max.X - min.X) * 0.5f,
+				Y = min.Y + (max.Y - min.Y) * 0.5f,
+				Z = min.Z + (max.Z - min.Z) * 0.5f,
+			};
+			public Vector3 extents => new Vector3
+			{
+				X = max.X - min.X,
+				Y = max.Y - min.Y,
+				Z = max.Z - min.Z,
+			};
+			public static MinMax init => new MinMax
+			{
+				min = { X = float.PositiveInfinity, Y = float.PositiveInfinity, Z = float.PositiveInfinity },
+				max = { X = float.NegativeInfinity, Y = float.NegativeInfinity, Z = float.NegativeInfinity },
+			};
+			public void Fallback()
+			{
+				if (float.IsInfinity(min.X))
+				{
+					min.X = 0;
+					max.X = 0;
+				}
+				if (float.IsInfinity(min.Y))
+				{
+					min.Y = 0;
+					max.Y = 0;
+				}
+				if (float.IsInfinity(min.Z))
+				{
+					min.Z = 0;
+					max.Z = 0;
+				}
+			}
+			public void Integrate(ref Vector3 vtx)
+			{
+				if (vtx.X <= float.MaxValue && vtx.X >= -float.MaxValue)
+				{
+					if (vtx.X < min.X)
+						min.X = vtx.X;
 
-        private void calculateCenter()
-        {
-            float max_x = -1, min_x = -1, max_y = -1, min_y = -1, max_z = -1, min_z = -1;
-            uint count = 0;
-            foreach (MeshData md in meshes)
-            {
-                foreach (Vector3 vec in md.vertices)
-                {
-                    if (count == 0)
-                    {
-                        min_x = vec.X; max_x = vec.X;
-                        min_y = vec.Y; max_y = vec.Y;
-                        min_z = vec.Z; max_z = vec.Z;
-                    }
-                    else
-                    {
-                        if (vec.X < min_x)
-                            min_x = vec.X;
-                        if (vec.X > max_x)
-                            max_x = vec.X;
-                        if (vec.Y < min_y)
-                            min_y = vec.Y;
-                        if (vec.Y > max_y)
-                            max_y = vec.Y;
-                        if (vec.Z < min_z)
-                            min_z = vec.Z;
-                        if (vec.Z > max_z)
-                            max_z = vec.Z;
-                         /*Console.WriteLine("Values: [" + max_x + ", " +min_x + ", " +max_y + ", " +min_y + ", " +max_z + ", " + min_z +"]");*/
-                    }
-                    count++;
-                }
-            }
-            center = new Vector3((max_x+min_x) / 2, (max_y + min_y) / 2, (max_z + min_z) / 2);
-            upper = new Vector3(max_x, max_y, max_z);
-            lower = new Vector3(min_x, min_y, min_z);
-        }
+					if (vtx.X > max.X)
+						max.X = vtx.X;
+				}
+				if (vtx.Y <= float.MaxValue && vtx.Y >= -float.MaxValue) { 
+					if (vtx.Y < min.Y)
+						min.Y = vtx.Y;
+					if (vtx.Y > max.Y)
+						max.Y = vtx.Y;
+				}
+				if (vtx.Z <= float.MaxValue && vtx.Z >= -float.MaxValue)
+				{
+					if (vtx.Z < min.Z)
+						min.Z = vtx.Z;
 
-        public void outputTextureAtlasToPng(string filename)
-        {
-			List<System.Drawing.Bitmap> bitmaps;
-			var raws = builder.TextureImages;
-			bitmaps = new List<System.Drawing.Bitmap>(raws.Length);
-			for(int i = raws.Length - 1; i >= 0; i--)
-				bitmaps.Add(raws[i].ToBitmap());
+					if (vtx.Z > max.Z)
+						max.Z = vtx.Z;
+				}
+			}
+		}
+		private void calculateCenter()
+		{
+			MeshData mesh;
+			MinMax min_max = MinMax.init;
+			int mesh_index, vertex;
+
+			for (mesh_index = meshes.Count - 1; mesh_index >= 0; --mesh_index)
+				for (mesh = meshes[mesh_index],
+					vertex = null == (object)mesh ? -1 : (mesh.vertices.Length - 1);
+					vertex >= 0; --vertex)
+					min_max.Integrate(ref mesh.vertices[vertex]);
+
+			min_max.Fallback();
+
+			center = min_max.center;
+			upper = min_max.max;
+			lower = min_max.min;
+		}
+
+		public bool outputTextureAtlasToPng(string filename)
+		{
+			List<System.Drawing.Bitmap> bitmaps = null;// new List<System.Drawing.Bitmap>();
+			HashSet<TextureFormats.Raw> once = new HashSet<TextureFormats.Raw>();
+			MeshData mesh;
+			for (int i = meshes.Count - 1; i >= 0; --i)
+				if (null != (object)(mesh = meshes[i]) &&
+					null != (object)mesh.texture &&
+					once.Add(mesh.texture.Raw))
+					(bitmaps ?? (bitmaps = new List<System.Drawing.Bitmap>())).Add(mesh.texture.Raw.ToBitmap());
+			if (null == bitmaps)
+				return false;
 			try
 			{
-				new TextureAtlasBuilder.TextureAtlas(bitmaps).outputToPNG(filename);
+				new TextureAtlasBuilder.TextureAtlas(bitmaps)
+					.outputToPNG(filename);
 			}
 			finally
 			{
 				foreach (var item in bitmaps)
 					if (item != null)
-						try { item.Dispose(); } catch (System.ObjectDisposedException){ }
+						try { item.Dispose(); } catch (System.ObjectDisposedException) { }
 			}
+			return true;
 
-        }
+		}
 
         public void buildBuffers() {
+			if (null == builder) return;
             builder.BuildData(meshes);
-            //Console.WriteLine("#meshes = " + meshes.Count);
-            for (int i = 0; i < meshes.Count; i++)
-            {
-                MeshData m = meshes[i];
-
-                //combined = ContentPipe.LoadTexture(builder.Atlas.Image);
-
-                m.vbo.Gen();
-                GL.BindBuffer(BufferTarget.ArrayBuffer, m.vbo);
-                GL.BufferData(
-                    BufferTarget.ArrayBuffer,
-                    (IntPtr)(Vector3.SizeInBytes * m.vertices.Length),
-                    m.vertices,
-                    BufferUsageHint.StaticDraw
-                    );
-
-				m.texBuf.Gen();
-                GL.BindBuffer(BufferTarget.ArrayBuffer, m.texBuf);
-                GL.BufferData(
-                    BufferTarget.ArrayBuffer,
-                    (IntPtr)(Vector2.SizeInBytes * m.texCoord.Length),
-                    m.texCoord,
-                    BufferUsageHint.StaticDraw
-                    );
-
-				m.colorBuf.Gen();
-                GL.BindBuffer(BufferTarget.ArrayBuffer, m.colorBuf);
-                GL.BufferData(
-                    BufferTarget.ArrayBuffer,
-                    (IntPtr)(Vector4.SizeInBytes * m.colors.Length),
-                    m.colors,
-                    BufferUsageHint.StaticDraw
-                    );
-				m.normalBuf.Gen();
-				GL.BindBuffer(BufferTarget.ArrayBuffer, m.normalBuf);
-				GL.BufferData(
-					BufferTarget.ArrayBuffer,
-					(IntPtr)(Vector3.SizeInBytes * m.normals.Length),
-					m.normals,
-					BufferUsageHint.StaticDraw
-					);
-
-				m.ibo.Gen();
-                GL.BindBuffer(BufferTarget.ElementArrayBuffer, m.ibo);
-                GL.BufferData(
-                    BufferTarget.ElementArrayBuffer,
-                    (IntPtr)(sizeof(uint) * m.indices.Length),
-                    m.indices,
-                    BufferUsageHint.StaticDraw
-                    );
-            }
+			builder.Dispose();
+			builder = null;
             calculateCenter();
         }
 

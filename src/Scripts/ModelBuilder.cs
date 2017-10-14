@@ -90,11 +90,11 @@ namespace Quad64.Scripts
 			data.segmentAddress = segmentAddress;
 			if (null != (object)material)
 			{
-				data.material = material.weakref;
+				data.wr_material = material.weakref;
 			}
 			else
 			{
-				data.material = null;
+				data.wr_material = null;
 			}
 			TempMesh.Add(ref TempMeshes, ref data, new TempMeshReferences { bmp = bmp, });
 			currentMaterial = TempMeshes.last;
@@ -169,14 +169,12 @@ namespace Quad64.Scripts
 					colors = new Vector4[v_count],
 					texCoord = new Vector2[v_count],
 					indices = new uint[mesh_iter.references.list.count],
-					texture = ContentPipe.LoadTexture(mesh_iter.references.bmp),
-					material =
-						null == (object)mesh_iter.value.material
-						? Material.Default
-						: ((TempMaterial)mesh_iter.value.material.Target).value,
+					texture = ContentPipe.LoadTexture(
+						mesh_iter.references.bmp,
+						mesh_iter.value.info.wrapS,
+						mesh_iter.value.info.wrapT),
+					material = mesh_iter.value.getMaterial(),
 				};
-				md.texture.TextureParamS = mesh_iter.value.info.wrapS;
-				md.texture.TextureParamT = mesh_iter.value.info.wrapT;
 				fw = ((uint)mesh_iter.references.bmp.Width << 5);
 				fh = ((uint)mesh_iter.references.bmp.Height << 5);
 				for (
@@ -200,6 +198,7 @@ namespace Quad64.Scripts
 				meshes.Add(md);
 			}
         }
+
 		/*
         public Vector3[] getVertices(int i) {
             return TempMeshes[i].final.vertices.ToArray();
@@ -233,14 +232,14 @@ namespace Quad64.Scripts
 				for (mesh_iter = TempMeshes.first,
 					mesh_iter_pos = TempMeshes.count; 0 != mesh_iter_pos;
 					mesh_iter = mesh_iter.next, --mesh_iter_pos) {
-					if (mesh_iter.value.segmentAddress == segmentAddress && mesh_iter.value.material == null)
+					if (mesh_iter.value.segmentAddress == segmentAddress && mesh_iter.value.wr_material == null)
 						break;
 				}
 			else
 				for (mesh_iter = TempMeshes.first,
 					mesh_iter_pos = TempMeshes.count; 0 != mesh_iter_pos;
 					mesh_iter = mesh_iter.next, --mesh_iter_pos)
-					if (mesh_iter.value.segmentAddress == segmentAddress && mesh_iter.value.material == register.weakref)
+					if (mesh_iter.value.segmentAddress == segmentAddress && mesh_iter.value.wr_material == register.weakref)
 						break;
 
 			if (mesh_iter_pos != 0)

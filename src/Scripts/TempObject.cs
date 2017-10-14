@@ -207,17 +207,17 @@ namespace Quad64.Scripts
 
 		bool IStructHandler<TempMeshData>.Equals(ref TempMeshData Left, ref TempMeshData Right)
 		{
-			return Left.segmentAddress == Right.segmentAddress && Left.material==Right.material;
+			return Left.segmentAddress == Right.segmentAddress && Left.wr_material==Right.wr_material;
 		}
 		void IStructHandler<TempMeshData>.SetupHashCode(ref TempMeshData Value, out int HashCode)
 		{
 			unchecked
 			{
-				if (null == Value.material)
+				if (null == Value.wr_material)
 					HashCode = (int)Value.segmentAddress;
 				else
 				{
-					var material = (TempMaterial)Value.material.Target;
+					var material = (TempMaterial)Value.wr_material.Target;
 					if (null == (object)material) throw new System.InvalidOperationException("Material died on value, making it invalid");
 					HashCode= material.hashCode;
 				}
@@ -232,9 +232,21 @@ namespace Quad64.Scripts
 		/// 
 		/// so keeping in mind that this value struct will be kept in memory it seems responsible to use weak reference here.
 		/// </summary>
-		internal WeakReference material;
+		internal WeakReference wr_material;
 		internal ModelBuilder.TextureInfo info;
 		internal uint segmentAddress;
+		internal TempMaterial tempMaterial => null == (object)wr_material ? null : (TempMaterial)wr_material.Target;
+		public bool getMaterial(out Material material)
+		{
+			var tempMaterial = this.tempMaterial;
+			bool ret;
+			if ((ret = (null != (object)tempMaterial)))
+				material = tempMaterial.value;
+			else
+				material = Material.Default;
+			return ret;
+		}
+		public Material getMaterial() { getMaterial(out Material ret); return ret; }
 		IStructHandler<TempMeshData> IStruct<TempMeshData>.Handler { get => default(TempMeshHandler); }
 	}
 	public struct TempMeshReferences : System.IDisposable

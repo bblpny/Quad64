@@ -293,7 +293,7 @@ namespace Quad64
 			uint viterpos;
 			this.Parent = Parent;
 			this.Options = Mesh.value;
-			this.Material = ((Scripts.TempMaterial)(this.Options.material.Target)).value;
+			this.Material = this.Options.getMaterial();
 			this.texture = Mesh.references.bmp;
 			utilize = Scripts.TempVertex128.Process(ref Mesh.references.list, utilize);
 			var VertexCount = utilize.Count;

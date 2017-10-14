@@ -17,7 +17,7 @@ namespace Quad64
 		public byte B;
 		[FieldOffset(0)]
 		public uint Value;
-
+		
 		public static Color4b Black => new Color4b { A = 255, };
 		public static Color4b White => new Color4b { Value = uint.MaxValue, };
 		public static Color4b Red => new Color4b { A = 255, R = 255, };
@@ -45,6 +45,17 @@ namespace Quad64
 
 		public void GL_Load() { OpenTK.Graphics.OpenGL.GL.Color4(R, G, B, A); }
 		public void GL_Load3() { OpenTK.Graphics.OpenGL.GL.Color3(R, G, B); }
+		unsafe public void GL_LoadFogColor()
+		{
+			float* f = stackalloc float[4];
+			f[0] = ByteUtility.b2f[R];
+			f[1] = ByteUtility.b2f[G];
+			f[2] = ByteUtility.b2f[B];
+			f[3] = ByteUtility.b2f[A];
+			OpenTK.Graphics.OpenGL.GL.Fog(
+				OpenTK.Graphics.OpenGL.FogParameter.FogColor,
+				f);
+		}
 		/// <summary>
 		/// this is a bit standard but nonstandard too.
 		/// 0 = R, 1 = G, 2 = B, 3 = A.
@@ -56,6 +67,10 @@ namespace Quad64
 		}
 		public bool Equals(Color4b other) { return Value == other.Value; }
 		public bool Equals(uint other) { return Value == other; }
+		public Color4b(ushort rgba5551)
+		{
+			TextureFormats.RGBA5551(out this, rgba5551);
+		}
 		public Color4b(byte R, byte G, byte B, byte A=255)
 		{
 			Value = 0;
@@ -63,6 +78,73 @@ namespace Quad64
 			this.R = R;
 			this.G = G;
 			this.B = B;
+		}
+		/// <summary>
+		/// hue is in degrees.
+		/// </summary>
+		public static Color4b HSV(double Hue, double Saturation, double Value, byte Alpha=255)
+		{
+			if (Value > 1.0) Value = 1.0;
+			else if (!(Value > 0.0)) Value = 0.0;
+
+			if (Saturation > 1.0) Saturation = 1.0;
+			else if (!(Saturation > 0.0)) Saturation = 0.0;
+
+			double Chroma = Value * Saturation;
+
+			if (!(Hue <= double.MaxValue && Hue >= -double.MaxValue))
+				return new Color4b { A = Alpha, };
+			else
+			{
+				if (Hue >= 360.0 || Hue < 0.0) Hue = Hue % 360.0;
+				if (Hue < 0.0) Hue += 360.0;
+				if (Hue >= 360.0) Hue -= 360.0;
+			}
+			Hue = Hue / 60;
+			if (Hue >= 6.0) Hue -= 6;
+			double X = ((Hue % 2d) - 1);
+			if (X < 0.0) X = -X;
+			X=Chroma * (1-X);
+			double m = Value - Chroma;
+			Chroma += m;
+			X += m;
+
+			if(Hue <= 3.0)
+			{
+				if(1.0<= Hue)
+				{
+					if (2.0 <= Hue)
+					{
+						return new Color4b { A = Alpha, r = (float)m, g = (float)Chroma, b = (float)X, };
+					}
+					else
+					{
+						return new Color4b { A = Alpha, r = (float)X, g = (float)Chroma, b = (float)m, };
+					}
+				}
+				else
+				{
+					return new Color4b { A = Alpha, r = (float)Chroma, g = (float)X, b = (float)m, };
+				}
+			}
+			else
+			{
+				if (4.0 <= Hue)
+				{
+					if (5.0 <= Hue)
+					{
+						return new Color4b { A = Alpha, r = (float)Chroma, g = (float)m, b = (float)X, };
+					}
+					else
+					{
+						return new Color4b { A = Alpha, r = (float)X, g = (float)m, b = (float)Chroma, };
+					}
+				}
+				else
+				{
+					return new Color4b { A = Alpha, r = (float)m, g = (float)X, b = (float)Chroma, };
+				}
+			}
 		}
 		public ushort Index => (ushort)((ushort)(G << 8) | R);
 		public byte List => B;

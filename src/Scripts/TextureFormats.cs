@@ -388,6 +388,19 @@ namespace Quad64
 			(byte)(30*256.0/31),
 			255,
 		};
+
+		// would rather not expose b32.
+		internal static void RGBA5551(out Color4b color, ushort value)
+		{
+			color = new Color4b
+			{
+				R = b32[(value >> 11) & 0x1F],
+				G = b32[(value >> 6) & 0x1F],
+				B = b32[(value >> 1) & 0x1F],
+				A = 0 == (value & 1) ? (byte)0 : (byte)255,
+			};
+		}
+
 		static void Resize(ref byte[] ARGB, int pixels)
 		{
 			pixels <<= 2;

@@ -259,7 +259,7 @@ namespace Quad64
 				new Transform
 				{
 					translation = rhs.translation + (rhs.rotation * (lhs.translation * rhs.scale)),
-					rotation = rhs.rotation * lhs.rotation,
+					rotation = (rhs.rotation * lhs.rotation).Normalized(),
 					scale = rhs.scale * lhs.scale
 				};
 		}
@@ -1369,6 +1369,7 @@ namespace Quad64 {
 				return (int)((uint)(Packed & uint.MaxValue) ^ (uint)((B >> 10) | (B << (32 - 10))));
 			}
 		}
+		public static vec4 operator -(vec4 v) { unchecked { return new vec4 { X = (integer)(-v.X), Y = (integer)(-v.Y), Z = (integer)(-v.Z), W = (integer)(-v.Z), }; } }
 		#region copy/paste
 		public override bool Equals(object obj)
 		{
@@ -1410,6 +1411,10 @@ namespace Quad64 {
 				this.Z = V4.Z;
 			}
 		}
+		#endregion
+		public static vec3 operator -(vec3 v) { unchecked { return new vec3 { X = (integer)(-v.X), Y = (integer)(-v.Y), Z = (integer)(-v.Z), }; } }
+
+		#region copy/paste
 		public integer this[int axis]
 		{
 			get
@@ -1945,6 +1950,7 @@ namespace Quad64
 				return (int)Packed;
 			}
 		}
+		public static vec4 operator -(vec4 v) { unchecked { return new vec4 { X = (integer)(-v.X), Y = (integer)(-v.Y), Z = (integer)(-v.Z), W = (integer)(-v.Z), }; } }
 		#region copy/paste
 		public override bool Equals(object obj)
 		{
@@ -1976,6 +1982,9 @@ namespace Quad64
 		public integer X;
 		public integer Y;
 		public integer Z;
+		#endregion
+		public static vec3 operator -(vec3 v) { unchecked { return new vec3 { X = (integer)(-v.X), Y = (integer)(-v.Y), Z = (integer)(-v.Z), }; } }
+		#region copy/paste
 		public block Packed
 		{
 			get { return new vec4 { X = X, Y = Y, Z = Z, }.Packed; }

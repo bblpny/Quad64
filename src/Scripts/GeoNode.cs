@@ -17,7 +17,10 @@ namespace Quad64
 		public GeoNode FirstChild => 0 == NumImmediate ? null : LastChild.Sibling;
 
 
+		public TransformI Cursor = new TransformI { scale = { Whole = 1, }, };
 		public uint NumImmediate;
+		public uint switchFunc, switchCount, switchPos;
+		public bool callSwitch, isSwitch;
 		public uint NumDescendants
 		{
 			get
@@ -249,6 +252,7 @@ namespace Quad64
 		NoMaterial = 1,
 		NoBuffers = 2,
 		NoTriangles = 4,
+		NoCullingChanges = 8,
 	}
 	public sealed class GeoMesh
 	{
@@ -406,6 +410,7 @@ namespace Quad64
 					}
 					if (0 == (options & GeoDrawOptions.NoMaterial))
 					{
+						GL.Enable(EnableCap.Texture2D);
 						GL.MatrixMode(MatrixMode.Texture);
 						GL.LoadIdentity();
 						GL.Scale(new OpenTK.Vector3
@@ -419,31 +424,35 @@ namespace Quad64
 						GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, Options.info.wrapT);
 					}
 				}
-				else if (0 == (options & GeoDrawOptions.NoBuffers))
+				else
 				{
-					GL.DisableClientState(ArrayCap.TextureCoordArray);
+					if (0 == (options & GeoDrawOptions.NoBuffers))
+					{
+						GL.DisableClientState(ArrayCap.TextureCoordArray);
+					}
+					if (0 == (options & GeoDrawOptions.NoMaterial))
+					{
+						GL.Disable(EnableCap.Texture2D);
+					}
 				}
+
 				if (0 == (GeoDrawOptions.NoMaterial & options))
 				{
 					//if (Material.Shade)
-
-					Material.color.GL_Load();
+					if (Material.HasMaterialColor)
+						Material.color.GL_Load();
+					else
+						GL.Color4(255, 255, 255, 255);
 
 					//else
 					//	GL.Color4((byte)255, (byte)255, (byte)255, (byte)255);
 
 					if (Material.Fog)
 					{
-						float* f = stackalloc float[4];
-						var v4 = (OpenTK.Vector4)(Material.color);
-						f[0] = v4.X;
-						f[1] = v4.Y;
-						f[2] = v4.Z;
-						f[3] = v4.W;
-						GL.Fog(FogParameter.FogColor, f);
+						Material.fogColor.GL_LoadFogColor();
+
 						GL.Fog(FogParameter.FogMode, (int)FogMode.Linear);
-						GL.Fog(FogParameter.FogStart, 512
-							);
+						GL.Fog(FogParameter.FogStart, 512);
 						GL.Fog(FogParameter.FogEnd, 1500 << 4);
 
 						GL.Enable(EnableCap.Fog);
@@ -453,21 +462,23 @@ namespace Quad64
 						GL.Disable(EnableCap.Fog);
 					}
 					// note that GL must consider front and back different.
-					bool Culls = true;
-					if (Material.CullBack)
-						if (Material.CullFront)
-							GL.CullFace(CullFaceMode.FrontAndBack);
-						else
-							GL.CullFace(CullFaceMode.Back);//<-- note
-					else if (Material.CullFront)
-						GL.CullFace(CullFaceMode.Front);//<-- note
-					else
-						Culls = false;
-
-					if (Globals.doBackfaceCulling)
+					if (0 == (options & GeoDrawOptions.NoCullingChanges))
 					{
-						if (Culls) GL.Enable(EnableCap.CullFace);
-						else GL.Disable(EnableCap.CullFace);
+						bool Culls = true;
+						if (Material.CullBack)
+							if (Material.CullFront)
+								GL.CullFace(CullFaceMode.FrontAndBack);
+							else
+								GL.CullFace(CullFaceMode.Back);//<-- note
+						else if (Material.CullFront)
+							GL.CullFace(CullFaceMode.Front);//<-- note
+						else
+							Culls = false;
+
+						if (Culls)
+							GL.Enable(EnableCap.CullFace);
+						else
+							GL.Disable(EnableCap.CullFace);
 					}
 				}
 				if (Material.IsLit)
@@ -519,8 +530,9 @@ namespace Quad64
 						}
 					}
 				}
-
 			}
+
+
 			if (0 == (options & GeoDrawOptions.NoTriangles))
 			{
 				GL.DrawElements(PrimitiveType.Triangles, IndexCount,
@@ -528,6 +540,8 @@ namespace Quad64
 					IndexElementSize == 2 ? DrawElementsType.UnsignedShort :
 					DrawElementsType.UnsignedByte, IntPtr.Zero);
 			}
+
+
 		}
 	}
 
@@ -630,10 +644,25 @@ namespace Quad64
 		public uint Num;
 		public readonly Model3D mdl;
 		public GeoNode Last;
-		public GeoNode First => 0 == Num ? null : Last.Next;
-		public GlobalCollection Nodes => this;
+		public GeoNode Shadow;
+		public GeoParent Background;
+		public uint BackgroundRam;
+		public uint FrustumAsm;
+		public Color4b BackgroundColor;
+		public Vector3s Pivot;
+		public ushort BackgroundImageIndex;
+		public ushort Near, Far;
+		public ushort FOVInt;
+
+
+
+		public ushort ShadowSize, DrawDistance;
+		public byte ShadowShape, ShadowTransparency;
 		public byte Code;
 		public byte DrawLayerMask;
+
+		public GeoNode First => 0 == Num ? null : Last.Next;
+		public GlobalCollection Nodes => this;
 
 		public bool draw(
 			Transform transform, 
@@ -823,13 +852,16 @@ namespace Quad64
 	public sealed class GeoNode : GeoParent
 	{
 
+		public uint ramAddress;
+
+		public short MinDistance, MaxDistance;
 		public bool IsTop => 0 == Depth;
-		public bool callSwitch, isSwitch;
-		public uint switchFunc, switchCount, switchPos;
 		public bool forceBillboard;
 		public byte SelfDrawLayerMask;
 		public byte DrawLayerMask;
 		public byte ChildrenDrawLayerMask;
+		public bool ZWrite;
+		public bool IsDistanceBased => MinDistance != MaxDistance;
 		public bool isBillboard
 		{
 			get
@@ -875,8 +907,12 @@ namespace Quad64
 		public GeoNode Next;
 
 		public GeoModel LastModel, FirstModel;
-
 		public Transform BuiltTransform;
+		public TransformI Local;
+		public TransformI Accumulated;
+		private TransformI LocalCached;
+		private bool ExplicitlyDirty;
+
 
 		internal GeoModel StartModel()
 		{
@@ -966,10 +1002,6 @@ namespace Quad64
 		public Transform Transform { get { BuildTransform(out Transform o); return o; } }
 		public Transform UncheckedTransform { get { BuildTransform(out Transform o, true); return o; } }
 
-		public TransformI Local;
-		public TransformI Accumulated;
-		private TransformI LocalCached;
-		private bool ExplicitlyDirty;
 
 		public bool MarkedDirty => ExplicitlyDirty && 0 != Depth;
 		public bool LocalModification => TransformI.Inequals(ref Local, ref LocalCached);

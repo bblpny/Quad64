@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Runtime.InteropServices;
+using OpenTK.Graphics.OpenGL;
 
 namespace Quad64
 {
@@ -1215,12 +1213,19 @@ namespace Quad64
 			uint mesh_pos;
 			for (model_pos = Count, model = First; 0 != model_pos; model = model.Next, --model_pos)
 			{
-				OpenTK.Graphics.OpenGL.GL.PushMatrix();
+				GL.PushMatrix();
 				model.Transform.GL_Load();
 				for (mesh_pos = model.Model.Count, mesh = model.Model.First; 0 != mesh_pos; mesh=mesh.Next, --mesh_pos)
 					if (mesh.DrawLayerMask == DrawLayerMask)
 						mesh.draw(options);
-				OpenTK.Graphics.OpenGL.GL.PopMatrix();
+
+				GL.Color4((byte)0, (byte)0, (byte)255, (byte)255);
+				Gizmos.Arrow(4, 128, 32, 45, OpenTK.Vector3.UnitZ, OpenTK.Vector3.UnitX, OpenTK.Vector3.UnitY);
+				GL.Color4((byte)255, (byte)0, (byte)0, (byte)255);
+				Gizmos.Arrow(4, 128, 32, 45, OpenTK.Vector3.UnitX, OpenTK.Vector3.UnitY, OpenTK.Vector3.UnitZ);
+				GL.Color4((byte)0, (byte)255, (byte)0, (byte)255);
+				Gizmos.Arrow(4, 128, 32, 45, OpenTK.Vector3.UnitY, OpenTK.Vector3.UnitZ, OpenTK.Vector3.UnitX);
+				GL.PopMatrix();
 			}
 		}
 	}

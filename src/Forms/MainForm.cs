@@ -321,18 +321,25 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 			long nanoseconds =
 				((elapsed * 1000) * 1000) / System.Diagnostics.Stopwatch.Frequency;
 
-			string str = seconds <= 0 ? string.Empty : (seconds + "s");
-
-			if (milliseconds > 0)
-				str += milliseconds + "ms";
-
-			if (nanoseconds > 0)
-				str += nanoseconds + "ns";
-			if (str.Length == 0)
-				str = "--";
-
-
-			return str;
+			if (seconds <= 0)
+				if (milliseconds <= 0)
+					if (nanoseconds <= 0)
+						return "0ns";
+					else
+						return nanoseconds + "ns";
+				else if (nanoseconds <= 0)
+					return milliseconds + "ms";
+				else
+					return string.Concat(milliseconds.ToString(), "ms", nanoseconds, "ns");
+			else if (milliseconds <= 0)
+				if (nanoseconds <= 0)
+					return seconds + "s";
+				else
+					return string.Concat(seconds.ToString(), "s", nanoseconds, "ns");
+			else if (nanoseconds <= 0)
+				return string.Concat(seconds.ToString(), "s", milliseconds, "ms");
+			else
+				return string.Concat(seconds.ToString(),"s", milliseconds.ToString(),"ms", nanoseconds.ToString(),"ns");
 		}
 		static bool PreEmptiveDirectory(string path)
 		{

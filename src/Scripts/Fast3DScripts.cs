@@ -566,6 +566,17 @@ namespace Quad64.Scripts
 						0) | 0xFF000000u);
 					//rom.printArray(colData, 4);
 				}
+				else if(0x88 == cmd[1])
+				{
+
+					temp.darkColor = (Color4b)(bytesToUInt24(
+						rom.getDataFromSegmentAddress(bytesToSegmentOffset(cmd, 4), 3),
+						0) | 0xFF000000u);
+				}
+				else
+				{
+					Console.WriteLine("Got a color:" + cmd[1].ToString("X2"));
+				}
 			}
 			private unsafe bool F3D_VTX(ref ByteSegment cmd)
 			{

@@ -21,13 +21,14 @@ namespace Quad64.Scripts
 
 				public static Persistant reset => default(Persistant);
 
-				public GeoNode Create(GeoParent parent)
+				public GeoNode Create(ref Runtime rt, GeoParent parent)
 				{
 					var node = new GeoNode(parent)
 					{
 						MinDistance = minDistance,
 						MaxDistance = maxDistance,
 						Local = parent.Cursor,
+						ZTest = rt._zbuf,
 					};
 					this = reset;
 					return node;
@@ -336,7 +337,7 @@ namespace Quad64.Scripts
 			{
 				var parent = rt.currentParent;
 
-				GeoNode newNode = rt.persistant.Create(parent);
+				GeoNode newNode = rt.persistant.Create(ref rt, parent);
 				if (parent.callSwitch)
 				{
 					newNode.switchPos = 0;

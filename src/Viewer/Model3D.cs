@@ -840,18 +840,18 @@ namespace Quad64
 			for (int i = o.Length - 1; i >= 0; i--) o[i] = o[i].GetTransformed(transform);
 			return o;
 		}
-		public void drawModel([In]ref RenderCamera camTrs)
+		public void drawModel(GraphicsInterface gi, [In]ref RenderCamera camTrs)
 		{
-			drawModel(Transform.Identity, ref camTrs);
+			drawModel(gi, Transform.Identity, ref camTrs);
 		}
-		public void drawModel(Transform transform, [In]ref RenderCamera camTrs)
+		public void drawModel(GraphicsInterface gi, Transform transform, [In]ref RenderCamera camTrs)
 		{
-			drawModel(transform,255, ref camTrs);
+			drawModel(gi,transform,255, ref camTrs);
 		}
 		//static bool old;
-		public bool drawModel(Transform transform, byte drawLayers, ref RenderCamera camTrs)
+		public bool drawModel(GraphicsInterface gi, Transform transform, byte drawLayers, ref RenderCamera camTrs)
 		{
-			if (/*!old &&*/ null != (object)root) return root.draw(transform, drawLayers, ref camTrs);
+			if (/*!old &&*/ null != (object)root) return root.draw(gi,transform, drawLayers, ref camTrs);
 			bool started = false;
 
 			for (int i = 0; i < meshes.Count; i++)
@@ -907,9 +907,9 @@ namespace Quad64
 			return started;
 		}
 
-		public bool drawModel(byte drawLayers, ref RenderCamera camTrs)
+		public bool drawModel(GraphicsInterface gi, byte drawLayers, ref RenderCamera camTrs)
 		{
-			return drawModel(Transform.Identity, drawLayers, ref camTrs);
+			return drawModel(gi, Transform.Identity, drawLayers, ref camTrs);
 		}
 
 		public static Export.ReferenceRegister<Model3D> ExportRegister;

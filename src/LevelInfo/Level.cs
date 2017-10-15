@@ -122,7 +122,7 @@ namespace Quad64
 			}
 		}
 
-		public void drawEverything(ref RenderCamera camTrs)
+		public void drawEverything(GraphicsInterface gi, ref RenderCamera camTrs)
 		{
 			Object3D obj;
 			Model3D model;
@@ -134,7 +134,7 @@ namespace Quad64
 			if (Globals.renderCollisionMap)
                 collision.drawCollisionMap(false);
             else
-                AreaModel.drawModel(ref camTrs);
+                AreaModel.drawModel(gi,ref camTrs);
 
             for (i = Objects.Count-1; i >= 0; --i)
             {
@@ -151,7 +151,7 @@ namespace Quad64
 					if (!parent.ModelIDs.TryGetValue(modelId, out model))
 						continue;
 					if (Globals.drawObjectModels)
-						model.drawModel(transform, ref camTrs);
+						model.drawModel(gi,transform, ref camTrs);
 
 					BoundingBox.draw(transform, selected ? Globals.SelectedObjectColor : Globals.ObjectColor,
 						model);
@@ -175,7 +175,7 @@ namespace Quad64
 					obj.LoadTransform(out transform, ref camTrs);
 
 					if (Globals.drawObjectModels)
-						model.drawModel(transform, ref camTrs);
+						model.drawModel(gi,transform, ref camTrs);
 
 					BoundingBox.draw(transform,
 						isObjectSelected(ilist, i) ? Globals.SelectedObjectColor : Globals.MacroObjectColor,
@@ -188,18 +188,18 @@ namespace Quad64
 				}
             }
         }
-		public void drawEverything(Transform transform, ref RenderCamera camTrs)
+		public void drawEverything(GraphicsInterface gi,Transform transform, ref RenderCamera camTrs)
 		{
 			if (transform != Transform.Identity)
 			{
 				OpenTK.Graphics.OpenGL.GL.PushMatrix();
 				transform.GL_Load();
-				drawEverything(ref camTrs);
+				drawEverything(gi,ref camTrs);
 				OpenTK.Graphics.OpenGL.GL.PopMatrix();
 			}
 			else
 			{
-				drawEverything(ref camTrs);
+				drawEverything(gi,ref camTrs);
 			}
 		}
 

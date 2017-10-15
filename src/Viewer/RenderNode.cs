@@ -645,21 +645,21 @@ namespace Quad64
 			if (0 != (Mask & (1 << 6))) Shadow.Sort(RenderLayer.MostDistanceComparer.Default);
 			if (0 != (Mask & (1 << 7))) Unsupported.Sort(RenderLayer.MostDistanceComparer.Default);
 		}
-		public void DrawModels()
+		public void DrawModels(GraphicsInterface gi)
 		{
 			RenderObject Iter;
 			uint IterPos;
 			for (Iter = First, IterPos = Count; 0 != IterPos; Iter = Iter.Next, --IterPos)
 				if (null != Iter.Model)
-					Iter.Model.drawModel(Iter.Transform, ref Camera);
+					Iter.Model.drawModel(gi,Iter.Transform, ref Camera);
 		}
-		public void DrawModels(byte drawLayers)
+		public void DrawModels(GraphicsInterface gi,byte drawLayers)
 		{
 			RenderObject Iter;
 			uint IterPos;
 			for (Iter = First, IterPos = Count; 0 != IterPos; Iter = Iter.Next, --IterPos)
 				if (null != Iter.Model)
-					Iter.Model.drawModel(Iter.Transform, drawLayers, ref Camera);
+					Iter.Model.drawModel(gi,Iter.Transform, drawLayers, ref Camera);
 		}
 	}
 	public sealed class RenderModel
@@ -1205,7 +1205,7 @@ namespace Quad64
 				First = arr[(int)(Count - 1u)];
 			}
 		}
-		public void Draw(GeoDrawOptions options=0)
+		public void Draw(GraphicsInterface gi, DrawOptions options=0)
 		{
 			RenderModel model;
 			GeoMesh mesh;
@@ -1215,9 +1215,9 @@ namespace Quad64
 			{
 				GL.PushMatrix();
 				model.Transform.GL_Load();
-				for (mesh_pos = model.Model.Count, mesh = model.Model.First; 0 != mesh_pos; mesh=mesh.Next, --mesh_pos)
+				for (mesh_pos = model.Model.Count, mesh = model.Model.First; 0 != mesh_pos; mesh = mesh.Next, --mesh_pos)
 					if (mesh.DrawLayerMask == DrawLayerMask)
-						mesh.draw(options);
+						gi.Draw(ref mesh.State, options);
 
 				GL.Color4((byte)0, (byte)0, (byte)255, (byte)255);
 				Gizmos.Arrow(4, 128, 32, 45, OpenTK.Vector3.UnitZ, OpenTK.Vector3.UnitX, OpenTK.Vector3.UnitY);

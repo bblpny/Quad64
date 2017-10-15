@@ -545,7 +545,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                 warps.Nodes.Add(warp.ToString());
             }
         }
-
+		private GraphicsInterface gi;
 		private void glControl1_Paint(object sender, PaintEventArgs e)
 		{
 			if (DRAIN_PER_PAINT == paint_counter++)
@@ -563,7 +563,8 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 		private void GL_Paint(object sender, PaintEventArgs e) {
 
 			GL.ClearColor(bgColor);
-            if (level != null)
+			var gi = this.gi ?? (this.gi = new GraphicsInterface());
+			if (level != null)
 			{
 				ResetGL();
 				bool camera_change = render_list.SetupCamera(
@@ -581,7 +582,16 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 						 camera.Position,
 						 camera.Pitch,
 						 camera.Yaw);
+					// something is really screwy with the camera.				new Vector4(-camera.forward, 0)
+					Vector4 lightDir = new Vector4(
+						(render_list.Camera.X + render_list.Camera.Z+(2*render_list.Camera.Y)).Normalized(),
+						0);
+					GL.Light(LightName.Light0, LightParameter.Position, lightDir);
+					GL.Enable(EnableCap.Light0);
+					GL.Enable(EnableCap.Normalize);
+
 				}
+
 					GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
                 GL.MatrixMode(MatrixMode.Projection);
 				GL.LoadMatrix(ref render_list.Camera.Proj);
@@ -605,8 +615,8 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 
 //				using (var layer = new RenderList())
 				{
-					var options = Globals.doBackfaceCulling ? (GeoDrawOptions)0 : GeoDrawOptions.NoCullingChanges;
-
+					var options = Globals.doBackfaceCulling ? (DrawOptions)0 : DrawOptions.NoCullingChanges;
+					options |= DrawOptions.ForceInvalidate;
 					level.getCurrentArea().renderEverything(render_list);
 					render_list.UpdateLayers();
 					ResetGL();
@@ -615,7 +625,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					GL.Disable(EnableCap.Blend);
 					GL.BlendFunc(BlendingFactorSrc.One, BlendingFactorDest.Zero);
 					GL.DepthFunc(DepthFunction.Less);
-					render_list.Solid.Draw(options);
+					render_list.Solid.Draw(gi,options);
 					// i haven't found any forum posts about draw layer 2.
 					// from looking at what is on it, it seems that draw layer 2 is dedicated to
 					// solid decals. what i mean by solid decals is polygons that are nearly directly on top of
@@ -627,12 +637,12 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					GL.PolygonOffset(-1, -1);
 					GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
 					GL.Enable(EnableCap.PolygonOffsetFill);
-					render_list.SolidDecal.Draw(options);
-					render_list.Decal.Draw(options);
+					render_list.SolidDecal.Draw(gi, options);
+					render_list.Decal.Draw(gi, options);
 					ResetGL();
 					GL.Enable(EnableCap.AlphaTest);
 					GL.AlphaFunc(AlphaFunction.Gequal, 1.0f);
-					render_list.SemiTransparent.Draw(options);
+					render_list.SemiTransparent.Draw(gi, options);
 					ResetGL();
 					GL.Enable(EnableCap.Blend);
 					GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
@@ -640,13 +650,13 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					GL.PolygonOffset(-1, -1);
 					GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
 					GL.Enable(EnableCap.PolygonOffsetFill);
-					render_list.Shadow.Draw(options);//<-- shadows.
+					render_list.Shadow.Draw(gi, options);//<-- shadows.
 					ResetGL();
 					GL.Enable(EnableCap.DepthTest);
 					GL.AlphaFunc(AlphaFunction.Greater, 0f);
 					GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
 					GL.DepthMask(false);
-					render_list.Transparent.Draw(options);//<-- transparents.
+					render_list.Transparent.Draw(gi, options);//<-- transparents.
 					ResetGL();
 					//layer.DrawModels((byte)(255 & (~((1 << 4)|(1<<5)|(1<<6)|(1<<1)))), ref Camera);//<-- transparents.
 					// bounds..

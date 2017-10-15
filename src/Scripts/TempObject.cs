@@ -15,6 +15,7 @@ namespace Quad64.Scripts
 		{
 			return Left.format == Right.format &&
 				Left.color == Right.color &&
+				Left.darkColor == Right.darkColor &&
 				Left.fogColor == Right.fogColor &&
 				Left.combineColor == Right.combineColor &&
 				Left.geometryMode == Right.geometryMode &&
@@ -36,6 +37,8 @@ namespace Quad64.Scripts
 					(((int)Value.wrapModes << 8) ) ^
 					((int)Value.fogColor) ^
 					((int)Value.combineColor) ^
+					((int)Value.color) ^
+					((int)Value.darkColor) ^
 					(int)(((Value.geometryMode << 8) ^ (Value.format) ^ (Value.geometryMode >> 24)))^
 					new Vector2{ X=1-Value.texScaleX,Y=1-Value.texScaleY}.GetHashCode() ^
 					(Value.drawLayerBillboard << 18);
@@ -48,7 +51,7 @@ namespace Quad64.Scripts
 		public ushort w, h;
 		public ushort texScaleX, texScaleY;
 		public SegmentOffset segOff;
-		public Color4b color, fogColor, combineColor;
+		public Color4b color, darkColor, fogColor, combineColor;
 		public uint geometryMode;
 		public ushort wrapModes;
 		public byte format, drawLayerBillboard;
@@ -130,8 +133,8 @@ namespace Quad64.Scripts
 		public bool TexLin => 0 != (0x080000 & geometryMode);
 		public bool Clip => 0 != (0x800000 & geometryMode);
 
-		public bool HasVertexColors { get { return !IsLit && Shade; } }
-		public bool HasMaterialColor { get { return IsLit; } }
+		public bool HasVertexColors { get { return !IsLit; } }
+		public bool HasMaterialColor { get { return true; } }// IsLit; } }// !Shade; } }
 	}
 
 	public sealed class TempMaterial 

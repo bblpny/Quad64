@@ -246,14 +246,6 @@ namespace Quad64
 			}
 		}
 	}
-	[Flags]
-	public enum GeoDrawOptions : byte
-	{
-		NoMaterial = 1,
-		NoBuffers = 2,
-		NoTriangles = 4,
-		NoCullingChanges = 8,
-	}
 	public sealed class GeoMesh
 	{
 		public readonly GeoModel Parent;
@@ -264,7 +256,7 @@ namespace Quad64
 		public readonly int IndexCount, IndicesByteSize;
 		public readonly byte IndexElementSize, DrawLayerMask;
 		public readonly Scripts.Material Material;
-		public GraphicsHandle.Buffer vbo, ibo;
+		public GraphicsState State;
 		public GeoMesh Next;
 		public int VertexCount => VertexBuffer.Length >> 4;
 		private static void StoreVertex(byte[] Buffer, ref Vertex128 value, int Offset)
@@ -351,7 +343,7 @@ namespace Quad64
 		{
 			if (this.VertexCount != 0)
 			{
-				int vbo = this.vbo.Gen();
+				int vbo = this.State.Vertex.Gen();
 
 				GL.BindBuffer(BufferTarget.ElementArrayBuffer, vbo);
 
@@ -360,7 +352,7 @@ namespace Quad64
 					VertexBuffer,
 					BufferUsageHint.StaticDraw);
 
-				int ibo = this.ibo.Gen();
+				int ibo = this.State.Index.Gen();
 
 				GL.BindBuffer(BufferTarget.ElementArrayBuffer, ibo);
 
@@ -383,166 +375,61 @@ namespace Quad64
 						this.IndexCount,
 						(byte[])this.IndexBuffer,
 						BufferUsageHint.StaticDraw);
+
+				State.IndexCount = (ushort)IndexCount;
+				State.IndexPrimitive = IndexPrimitive.Triangles;
+				State.IndexInteger =
+						IndexElementSize == 4 ? IndexInteger.Int :
+						IndexElementSize == 2 ? IndexInteger.Short :
+						IndexInteger.Byte;
+				State.LightMode = Material.Smooth ? LightMode.Smooth : LightMode.Hard;
+				State.Texture = texture.GetLoadedHandle();
+
+				State.TexturePresentation = (Material.TexGen ?
+					Material.TexLin ? TexturePresentationUtility.TexGenSpherical | TexturePresentationUtility.TexGenLinear : TexturePresentationUtility.TexGenSpherical :
+					Material.TexLin ? TexturePresentationUtility.TexGenLinear : (TexturePresentation)0) |
+					(0 == ((Material.wrapModes >> 8) & 1) ?
+						0 == ((Material.wrapModes >> 8) & 2) ?
+							(TexturePresentation)0 :
+							TexturePresentationUtility.WrapS_Clamp :
+						0 == ((Material.wrapModes >> 8) & 2) ?
+							TexturePresentationUtility.WrapS_Mirror :
+							(TexturePresentation)0) |
+							(0 == ((Material.wrapModes) & 1) ?
+						0 == ((Material.wrapModes) & 2) ?
+							(TexturePresentation)0 :
+							TexturePresentationUtility.WrapT_Clamp :
+						0 == ((Material.wrapModes) & 2) ?
+							TexturePresentationUtility.WrapT_Mirror :
+							(TexturePresentation)0);
+
+				State.TextureScaleX = Material.texScaleX;
+				State.TextureScaleY = Material.texScaleY;
+				State.TextureWidth = Material.w;
+				State.TextureHeight = Material.h;
+				State.ElementMask = (Material.HasVertexColors ? 
+					ElementMask.Color : ElementMask.Normal) |
+					(Material.HasTexture ? ElementMask.Texcoord : (ElementMask)0) |
+					(ElementMask.Index | ElementMask.Position);
+
+				if (null != texture && 0 != (State.ElementMask & ElementMask.Texcoord))
+				{
+					State.Texture = texture.GetLoadedHandle();
+					State.ElementMask |= ElementMask.Texture;
+				}
+				State.Fog = Material.fogColor;
+				State.FeatureMask = (FeatureMask)(Material.drawLayerBillboard & 7) |
+					(this.Parent.Parent.ZTest ? FeatureMask.ZTest : (FeatureMask)0) |
+					(Material.IsLit ? FeatureMask.Lit : (FeatureMask)0) |
+					(Material.Fog ? FeatureMask.Fog : (FeatureMask)0) |
+					(Material.HasMaterialColor ? FeatureMask.Tint : (FeatureMask)0);
+				State.Tint = Material.color;
+				State.Dark = Material.darkColor;
+				State.VertexColor = VertexColor.Smooth;
+				State.Culling = Material.CullBack ? Material.CullFront ? Culling.Both : Culling.Back : Material.CullFront ? Culling.Front : Culling.Off;
 			}
 			return DrawLayerMask;
-		}
-		[ThreadStatic]
-		static int tex_handle;
-		public unsafe void draw(GeoDrawOptions options = 0)
-		{
-			if ((GeoDrawOptions.NoMaterial | GeoDrawOptions.NoBuffers) != (options & (GeoDrawOptions.NoMaterial | GeoDrawOptions.NoBuffers)))
-			{
-				if (0 == (options & GeoDrawOptions.NoBuffers))
-				{
-					GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
-					GL.EnableClientState(ArrayCap.VertexArray);
-					GL.VertexPointer(3, VertexPointerType.Short, 16, IntPtr.Zero);
-					GL.BindBuffer(BufferTarget.ElementArrayBuffer, ibo);
-				}
-
-				if (Material.HasTexture && null != texture && GraphicsHandle.Null != (tex_handle = texture.GetLoadedHandle().Alive))
-				{
-					if (0 == (options & GeoDrawOptions.NoBuffers))
-					{
-						GL.EnableClientState(ArrayCap.TextureCoordArray);
-						GL.TexCoordPointer(2, TexCoordPointerType.Short, 16, (IntPtr)(8));
-						GL.BindTexture(TextureTarget.Texture2D, tex_handle);
-					}
-					if (0 == (options & GeoDrawOptions.NoMaterial))
-					{
-						GL.Enable(EnableCap.Texture2D);
-						GL.MatrixMode(MatrixMode.Texture);
-						GL.LoadIdentity();
-						GL.Scale(new OpenTK.Vector3
-						{
-							X = (new Fixed16_16 { Value = 1u + Material.texScaleX }.Single / ((int)Material.w << 5)),
-							Y = (new Fixed16_16 { Value = 1u + Material.texScaleY }.Single / ((int)Material.h << 5)),
-							Z = 1f,
-						});
-						GL.MatrixMode(MatrixMode.Modelview);
-						GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, Options.info.wrapS);
-						GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, Options.info.wrapT);
-					}
-				}
-				else
-				{
-					if (0 == (options & GeoDrawOptions.NoBuffers))
-					{
-						GL.DisableClientState(ArrayCap.TextureCoordArray);
-					}
-					if (0 == (options & GeoDrawOptions.NoMaterial))
-					{
-						GL.Disable(EnableCap.Texture2D);
-					}
-				}
-
-				if (0 == (GeoDrawOptions.NoMaterial & options))
-				{
-					//if (Material.Shade)
-					if (Material.HasMaterialColor)
-						Material.color.GL_Load();
-					else
-						GL.Color4(255, 255, 255, 255);
-
-					//else
-					//	GL.Color4((byte)255, (byte)255, (byte)255, (byte)255);
-
-					if (Material.Fog)
-					{
-						Material.fogColor.GL_LoadFogColor();
-
-						GL.Fog(FogParameter.FogMode, (int)FogMode.Linear);
-						GL.Fog(FogParameter.FogStart, 512);
-						GL.Fog(FogParameter.FogEnd, 1500 << 4);
-
-						GL.Enable(EnableCap.Fog);
-					}
-					else
-					{
-						GL.Disable(EnableCap.Fog);
-					}
-					// note that GL must consider front and back different.
-					if (0 == (options & GeoDrawOptions.NoCullingChanges))
-					{
-						bool Culls = true;
-						if (Material.CullBack)
-							if (Material.CullFront)
-								GL.CullFace(CullFaceMode.FrontAndBack);
-							else
-								GL.CullFace(CullFaceMode.Back);//<-- note
-						else if (Material.CullFront)
-							GL.CullFace(CullFaceMode.Front);//<-- note
-						else
-							Culls = false;
-
-						if (Culls)
-							GL.Enable(EnableCap.CullFace);
-						else
-							GL.Disable(EnableCap.CullFace);
-					}
-				}
-				if (Material.IsLit)
-				{
-					if (0 == (options & GeoDrawOptions.NoBuffers))
-					{
-						GL.DisableClientState(ArrayCap.ColorArray);
-						//GL.Enable(EnableCap.Normalize);
-						//GL.Enable(EnableCap.NormalArray);
-						GL.EnableClientState(ArrayCap.NormalArray);
-						GL.NormalPointer(NormalPointerType.Byte, 16, 12);
-						//GL.ColorPointer(1, ColorPointerType.UnsignedByte, 16, 15);
-					}
-					if (0 == (options & GeoDrawOptions.NoMaterial))
-					{
-						GL.Disable(EnableCap.PolygonSmooth);
-						GL.Disable(EnableCap.AutoNormal);
-					}
-				}
-				else
-				{
-					if (0 == (options & GeoDrawOptions.NoBuffers))
-					{
-						GL.DisableClientState(ArrayCap.NormalArray);
-						GL.EnableClientState(ArrayCap.ColorArray);
-						GL.ColorPointer(3, ColorPointerType.UnsignedByte, 16, 12);
-					}
-					//GL.Disable(EnableCap.Normalize);
-					//GL.Disable(EnableCap.NormalArray);
-					if (0 == (options & GeoDrawOptions.NoMaterial))
-					{
-						if (Material.Shade)
-						{
-							GL.Enable(EnableCap.AutoNormal);
-							if (Material.Smooth)
-							{
-								GL.Enable(EnableCap.PolygonSmooth);
-							}
-							else
-							{
-								GL.Disable(EnableCap.PolygonSmooth);
-							}
-
-						}
-						else
-						{
-							GL.Disable(EnableCap.AutoNormal);
-							GL.Disable(EnableCap.PolygonSmooth);
-						}
-					}
-				}
-			}
-
-
-			if (0 == (options & GeoDrawOptions.NoTriangles))
-			{
-				GL.DrawElements(PrimitiveType.Triangles, IndexCount,
-					IndexElementSize == 4 ? DrawElementsType.UnsignedInt :
-					IndexElementSize == 2 ? DrawElementsType.UnsignedShort :
-					DrawElementsType.UnsignedByte, IntPtr.Zero);
-			}
-
-
-		}
+		}		
 	}
 
 	public sealed class GeoModel
@@ -665,6 +552,7 @@ namespace Quad64
 		public GlobalCollection Nodes => this;
 
 		public bool draw(
+			GraphicsInterface gi,
 			Transform transform, 
 			byte drawLayers,
 			ref RenderCamera camTrs)
@@ -680,7 +568,7 @@ namespace Quad64
 				transform.GL_Load();
 				do
 				{
-					NodeIter.draw(ref transform, drawLayers, ref camTrs);
+					NodeIter.draw(gi, ref transform, drawLayers, ref camTrs);
 					while (0 != --NodeIterPos &&
 						0 == ((NodeIter = NodeIter.Sibling).DrawLayerMask & drawLayers))
 						continue;
@@ -860,7 +748,7 @@ namespace Quad64
 		public byte SelfDrawLayerMask;
 		public byte DrawLayerMask;
 		public byte ChildrenDrawLayerMask;
-		public bool ZWrite;
+		public bool ZTest;
 		public bool IsDistanceBased => MinDistance != MaxDistance;
 		public bool isBillboard
 		{
@@ -955,7 +843,7 @@ namespace Quad64
 						RenderLayer.Insert(list, obj, model, ref trs, ref viewProj, (byte)(drawLayers & model.DrawLayerMask));
 			}
 		}
-		public void draw(ref Transform transform, byte drawLayers, ref RenderCamera camTrs, GeoDrawOptions options=0)
+		public void draw(GraphicsInterface gi,ref Transform transform, byte drawLayers, ref RenderCamera camTrs, DrawOptions options=0)
 		{
 			GeoNode NodeIter;
 			GeoModel ModelIter;
@@ -973,11 +861,11 @@ namespace Quad64
 					if (0 != (ModelIter.DrawLayerMask & drawLayers))
 						for (MeshIter = ModelIter.First, MeshIterPos = ModelIter.Count; 0 != MeshIterPos; MeshIter = MeshIter.Next, --MeshIterPos)
 							if (0 != (MeshIter.DrawLayerMask & drawLayers))
-								MeshIter.draw(options);
+								gi.Draw(ref MeshIter.State, Options:options);
 
 			for (NodeIter = FirstChild, NodeIterPos = NumImmediate; 0 != NodeIterPos; NodeIter = NodeIter.Sibling, --NodeIterPos)
 				if (0 != (NodeIter.DrawLayerMask & drawLayers))
-					NodeIter.draw(ref new_transform, drawLayers, ref camTrs, options);
+					NodeIter.draw(gi, ref new_transform, drawLayers, ref camTrs, options);
 
 			GL.PopMatrix();
 		}

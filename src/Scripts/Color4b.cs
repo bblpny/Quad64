@@ -36,6 +36,13 @@ namespace Quad64
 		public static Color4b ClearCyan => new Color4b { G = 255, B = 255, };
 
 
+		// these are GL defaults.. https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/glMaterial.xml
+		public static Color4b Default_Ambient => new Color4b { R = 51, G = 51, B = 51, A = 255, };
+		// 0.8 * 255 = 204
+		public static Color4b Default_Diffuse => new Color4b { R = 204, G = 204, B = 204, A = 255, };
+		public static Color4b Default_Specular => new Color4b { A = 255, };
+		public static Color4b Default_Emission => new Color4b { A = 255, };
+
 		public float a { get => ByteUtility.b2f[A]; set => A = ByteUtility.FloatToChannel(value); }
 		public float r { get => ByteUtility.b2f[R]; set => R = ByteUtility.FloatToChannel(value); }
 		public float g { get => ByteUtility.b2f[G]; set => G = ByteUtility.FloatToChannel(value); }
@@ -45,6 +52,24 @@ namespace Quad64
 
 		public void GL_Load() { OpenTK.Graphics.OpenGL.GL.Color4(R, G, B, A); }
 		public void GL_Load3() { OpenTK.Graphics.OpenGL.GL.Color3(R, G, B); }
+
+		public static explicit operator OpenTK.Graphics.Color4(Color4b criteria)
+		{
+			return new OpenTK.Graphics.Color4(criteria.R, criteria.G, criteria.B, criteria.A);
+		}
+
+		public unsafe void GL_LoadMaterial(
+			OpenTK.Graphics.OpenGL.MaterialFace MaterialFace = OpenTK.Graphics.OpenGL.MaterialFace.FrontAndBack,
+			OpenTK.Graphics.OpenGL.MaterialParameter MaterialParameter = OpenTK.Graphics.OpenGL.MaterialParameter.Diffuse)
+		{
+			float* f = stackalloc float[4];
+			f[0] = ByteUtility.b2f[R];
+			f[1] = ByteUtility.b2f[G];
+			f[2] = ByteUtility.b2f[B];
+			f[3] = ByteUtility.b2f[A];
+			OpenTK.Graphics.OpenGL.GL.Material(MaterialFace, MaterialParameter, f);
+		}
+
 		unsafe public void GL_LoadFogColor()
 		{
 			float* f = stackalloc float[4];

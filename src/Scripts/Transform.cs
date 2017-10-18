@@ -7,6 +7,209 @@ using BubblePony.Integers;
 namespace Quad64
 {
 	using U = TransformUtility;
+	[StructLayout(LayoutKind.Sequential)]
+	public struct Matrix4s : IEquatable<Matrix4s>
+	{
+		public Vector4s A, B, C, D;
+		public override string ToString()
+		{
+			return string.Concat("[", A.ToString(), ",",
+				string.Concat(B.ToString(), ",", C.ToString(),
+				string.Concat(",", D.ToString(), "]")));
+		}
+		public static bool Equals(ref Matrix4s L, ref Matrix4s R)
+		{
+			return L.A.Packed == R.A.Packed &&
+				L.B.Packed == R.B.Packed &&
+				L.C.Packed == R.C.Packed &&
+				L.D.Packed == R.D.Packed;
+		}
+		public static bool operator ==(Matrix4s L, Matrix4s R) { return Equals(ref L, ref R); }
+		public static bool operator !=(Matrix4s L, Matrix4s R) { return !Equals(ref L, ref R); }
+		public static int GetHashCode(ref Matrix4s L)
+		{
+			return ((L.A.Packed ^ (L.B.Packed * 5u)) ^ (L.C.Packed ^ (L.D.Packed * 5u))).GetHashCode();
+		}
+		public override int GetHashCode()
+		{
+			return GetHashCode(ref this);
+		}
+		public override bool Equals(object obj)
+		{
+			return obj is Matrix4s && ((Matrix4s)obj).Equals(ref this);
+		}
+		public bool Equals(ref Matrix4s other) { return Equals(ref this, ref other); }
+		public bool Equals(Matrix4s other) { return Equals(ref this, ref other); }
+
+		public Vector4s this[int i]
+		{
+			get => 0 == (i & 2) ? 0 == (i & 1) ? A : B : 0 == (i & 1) ? C : D;
+			set
+			{
+				if (0 == (i & 2))
+					if (0 == (i & 1))
+						A = value;
+					else
+						B = value;
+				else if (0 == (i & 1))
+					C = value;
+				else
+					D = value;
+			}
+		}
+		public short this[int i, int j]
+		{
+			get => 0 == (i & 2) ? 0 == (i & 1) ? A[j] : B[j] : 0 == (i & 1) ? C[j] : D[j];
+			set
+			{
+				if (0 == (i & 2))
+					if (0 == (i & 1))
+						A[j] = value;
+					else
+						B[j] = value;
+				else if (0 == (i & 1))
+					C[j] = value;
+				else
+					D[j] = value;
+			}
+		}
+	}
+
+	[StructLayout(LayoutKind.Explicit)]
+	public struct Light : IEquatable<Light>
+	{
+		[FieldOffset(0)]
+		public ulong Packed;
+
+		[FieldOffset(0)]
+		public Color4b color;
+
+		[FieldOffset(4)]
+		public Vector4c normal;
+
+		public Color4b Color => new Color4b { R = color.R, G = color.G, B = color.B, A = 255, };
+		public Vector3c Dir => new Vector3c { X = normal.X, Y = normal.Y, Z = normal.Z };
+
+		public uint this[int i] {
+			get => 0 == (i & 1) ? color.Value : normal.Packed;
+			set
+			{
+				if (0 == (i & 1))
+					color.Value = value;
+				else
+					normal.Packed = value;
+			}
+		}
+		public override string ToString()
+		{
+			return string.Concat("[", new Vector3b { X = color.R, Y = color.G, Z = color.B, }.ToString(), ",",
+				string.Concat(new Vector3c { X = normal.X, Y = normal.Y, Z = normal.Z, }.ToString(), "]"));
+		}
+		public static bool Equals(ref Light L, ref Light R)
+		{
+			return
+				0 == ((L.color.Value ^ R.color.Value) & (new Color4b { R = 255, G = 255, B = 255, }.Value)) &&
+				0 == ((L.normal.Packed ^ R.normal.Packed) & (new Vector4c { X = -1, Y = -1, Z = -1, }.Packed));
+		}
+		public static bool operator ==(Light L, Light R) { return Equals(ref L, ref R); }
+		public static bool operator !=(Light L, Light R) { return !Equals(ref L, ref R); }
+		public static int GetHashCode(ref Light L)
+		{
+			unchecked
+			{
+				return (int)(
+					((L.color.Value & new Color4b { R = 255, G = 255, B = 255, }.Value) * 31u) ^
+				(((L.normal.Packed & new Vector4c { X = -1, Y = -1, Z = -1, }.Packed) << 8) / 5u));
+			}
+		}
+		public override int GetHashCode()
+		{
+			return GetHashCode(ref this);
+		}
+		public override bool Equals(object obj)
+		{
+			return obj is Light && ((Light)obj).Equals(ref this);
+		}
+		public bool Equals(ref Light other) { return Equals(ref this, ref other); }
+		public bool Equals(Light other) { return Equals(ref this, ref other); }
+
+	}
+
+	[StructLayout(LayoutKind.Sequential)]
+	public struct LightArray : IEquatable<LightArray>
+	{
+		public Light 
+			A, B, C, D,
+			E, F, G, H;
+		public static int GetHashCode(ref LightArray L)
+		{
+			return
+			((Light.GetHashCode(ref L.G) ^ (Light.GetHashCode(ref L.H) * 5)) +
+			(Light.GetHashCode(ref L.E) ^ (Light.GetHashCode(ref L.F) * 5))) +
+			((Light.GetHashCode(ref L.G) ^ (Light.GetHashCode(ref L.H) * 5)) +
+			(Light.GetHashCode(ref L.E) ^ (Light.GetHashCode(ref L.F) * 5)) * 5);
+		}
+		public static bool Equals(ref LightArray L, ref LightArray R)
+		{
+			return
+				Light.Equals(ref L.A, ref R.A) &&
+				Light.Equals(ref L.B, ref R.B) &&
+				Light.Equals(ref L.C, ref R.C) &&
+				Light.Equals(ref L.D, ref R.D) &&
+				Light.Equals(ref L.E, ref R.E) &&
+				Light.Equals(ref L.F, ref R.F) &&
+				Light.Equals(ref L.G, ref R.G) &&
+				Light.Equals(ref L.H, ref R.H);
+		}
+		public static bool Equals(
+			ref LightArray L,
+			ref LightArray R,
+			int Count)
+		{
+			return
+				Count<=0 ||
+				( Light.Equals(ref L.A, ref R.A) &&
+				  (Count==1||(Light.Equals(ref L.B, ref R.B) &&
+					(Count==2||(Light.Equals(ref L.C, ref R.C) &&
+					 (Count==3||(Light.Equals(ref L.D, ref R.D) &&
+					 (Count==4||(Light.Equals(ref L.E, ref R.E) &&
+					(Count==5||(Light.Equals(ref L.F, ref R.F) &&
+					(Count==6||(Light.Equals(ref L.G, ref R.G) &&
+					(Count==7||Light.Equals(ref L.H, ref R.H)))))))))))))));
+		}
+
+		public Light this[int i]
+		{
+			get => (0 == (i & 4)) ? (0 == (i & 2)) ? (0 == (i & 1)) ? A : B : (0 == (i & 1)) ? C : D :
+				(0 == (i & 2)) ? (0 == (i & 1)) ? E : F : (0 == (i & 1)) ? G : H;
+			set
+			{
+				if (0 == (i & 4)) if (0 == (i & 2)) if (0 == (i & 1)) A = value; else B = value; else if (0 == (i & 1)) C = value; else D = value;
+				else if (0 == (i & 2)) if (0 == (i & 1)) E = value; else F = value; else if (0 == (i & 1)) G = value; else H = value;
+			}
+		}
+		public uint this[int i, int j]
+		{
+			get => (0 == (i & 4)) ? (0 == (i & 2)) ? (0 == (i & 1)) ? A[j] : B[j] : (0 == (i & 1)) ? C[j] : D[j] :
+				(0 == (i & 2)) ? (0 == (i & 1)) ? E[j] : F[j] : (0 == (i & 1)) ? G[j] : H[j];
+			set
+			{
+				if (0 == (i & 4)) if (0 == (i & 2)) if (0 == (i & 1)) A[j] = value; else B[j] = value; else if (0 == (i & 1)) C[j] = value; else D[j] = value;
+				else if (0 == (i & 2)) if (0 == (i & 1)) E[j] = value; else F[j] = value; else if (0 == (i & 1)) G[j] = value; else H[j] = value;
+			}
+		}
+		public override int GetHashCode()
+		{
+			return GetHashCode(ref this);
+		}
+		public override bool Equals(object obj)
+		{
+			return obj is LightArray && ((LightArray)obj).Equals(ref this);
+		}
+		public bool Equals(ref LightArray other) { return Equals(ref this, ref other); }
+		public bool Equals(LightArray other) { return Equals(ref this, ref other); }
+	}
+
 	public struct Transform : IEquatable<Transform>
 	{
 		public Vector3 translation;

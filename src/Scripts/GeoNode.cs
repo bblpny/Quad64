@@ -383,34 +383,38 @@ namespace Quad64
 						IndexElementSize == 2 ? IndexInteger.Short :
 						IndexInteger.Byte;
 				State.LightMode = Material.Smooth ? LightMode.Smooth : LightMode.Hard;
-				State.Texture = texture.GetLoadedHandle();
 
-				State.TexturePresentation = (Material.TexGen ?
-					Material.TexLin ? TexturePresentationUtility.TexGenSpherical | TexturePresentationUtility.TexGenLinear : TexturePresentationUtility.TexGenSpherical :
-					Material.TexLin ? TexturePresentationUtility.TexGenLinear : (TexturePresentation)0) |
+				State.ElementMask = (Material.HasVertexColors ?
+					ElementMask.Color : ElementMask.Normal) |
+					(Material.HasTexture ?
+					 (null != texture && !texture.IsColorTexture) ? 
+						(ElementMask.Texture | ElementMask.Texcoord) :
+						ElementMask.Texcoord : (ElementMask)0) |
+					(ElementMask.Index | ElementMask.Position);
+
+				if (0!=(State.ElementMask & ElementMask.Texture))
+					State.Texture = texture.GetLoadedHandle();
+
+				State.TexturePresentation =
 					(0 == ((Material.wrapModes >> 8) & 1) ?
 						0 == ((Material.wrapModes >> 8) & 2) ?
 							(TexturePresentation)0 :
-							TexturePresentationUtility.WrapS_Clamp :
+							TexturePresentation.ClampS :
 						0 == ((Material.wrapModes >> 8) & 2) ?
-							TexturePresentationUtility.WrapS_Mirror :
+							TexturePresentation.MirrorS :
 							(TexturePresentation)0) |
 							(0 == ((Material.wrapModes) & 1) ?
 						0 == ((Material.wrapModes) & 2) ?
 							(TexturePresentation)0 :
-							TexturePresentationUtility.WrapT_Clamp :
+							TexturePresentation.ClampT :
 						0 == ((Material.wrapModes) & 2) ?
-							TexturePresentationUtility.WrapT_Mirror :
+							TexturePresentation.MirrorT :
 							(TexturePresentation)0);
 
 				State.TextureScaleX = Material.texScaleX;
 				State.TextureScaleY = Material.texScaleY;
 				State.TextureWidth = Material.w;
 				State.TextureHeight = Material.h;
-				State.ElementMask = (Material.HasVertexColors ? 
-					ElementMask.Color : ElementMask.Normal) |
-					(Material.HasTexture ? ElementMask.Texcoord : (ElementMask)0) |
-					(ElementMask.Index | ElementMask.Position);
 
 				if (null != texture && 0 != (State.ElementMask & ElementMask.Texcoord))
 				{
@@ -418,15 +422,19 @@ namespace Quad64
 					State.ElementMask |= ElementMask.Texture;
 				}
 				State.Fog = Material.fogColor;
+				State.FogMultiplier = Material.fogOffset;
+				State.FogOffset = Material.fogMultiplier; 
 				State.FeatureMask = (FeatureMask)(Material.drawLayerBillboard & 7) |
 					(this.Parent.Parent.ZTest ? FeatureMask.ZTest : (FeatureMask)0) |
 					(Material.IsLit ? FeatureMask.Lit : (FeatureMask)0) |
-					(Material.Fog ? FeatureMask.Fog : (FeatureMask)0) |
-					(Material.HasMaterialColor ? FeatureMask.Tint : (FeatureMask)0);
-				State.Tint = Material.color;
-				State.Dark = Material.darkColor;
+					(Material.Fog ? FeatureMask.Fog : (FeatureMask)0);
+				State.Color = Material.lightColor;
+				State.LightColor = Material.lightColor;
+				State.DarkColor = Material.darkColor;
 				State.VertexColor = VertexColor.Smooth;
 				State.Culling = Material.CullBack ? Material.CullFront ? Culling.Both : Culling.Back : Material.CullFront ? Culling.Front : Culling.Off;
+
+				GraphicsState.Sanitize(ref State);
 			}
 			return DrawLayerMask;
 		}		

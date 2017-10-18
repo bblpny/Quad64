@@ -1,27 +1,50 @@
 ﻿using BubblePony.Alloc;
 using BubblePony.Integers;
-
+using System.Runtime.InteropServices;
 namespace Quad64.Scripts
 {
-	internal sealed class GeoScripts : Script
+	public sealed class GeoScripts : Script
     {
-		private partial struct Runtime
+		private GeoScripts() : base(
+			RuntimeType:typeof(Runtime), 
+			DelegateType:typeof(Runtime.Command),
+			PreflightRunCommand:true) { }
+
+		private static readonly GeoScripts Instance = new GeoScripts();
+		
+		protected sealed override byte EvaluateRuntime(Script.Runtime Source)
 		{
-			public readonly ROM rom;
+			return Runtime.Evaluate((Runtime)Source);
+		}
+		protected sealed override Script.Runtime CloneRuntime(Script.Runtime Source)
+		{
+			return new Runtime((Runtime)Source);
+		}
+		new private sealed partial class Runtime : Script.Runtime.Impl<Runtime>,
+			ILevelProperty
+		{
 			public readonly Level lvl;
 			public readonly Model3D mdl;
 			public readonly GeoRoot rootNode;
+
+			Level ILevelProperty.Level => lvl;
 			public GeoParent currentParent => (GeoParent)nodeCurrent ?? rootNode;
 			public GeoNode nodeCurrent;
-			public ByteSegment data;
-			private Persistant persistant;
-			private struct Persistant
+
+#if DEBUG
+			public readonly ushort[] counter;
+#endif
+			public Persistant persistant=Persistant.reset;
+			public bool _zbuf=true;
+
+
+			public struct Persistant
 			{
 				public short minDistance, maxDistance;
 
 				public static Persistant reset => default(Persistant);
 
-				public GeoNode Create(ref Runtime rt, GeoParent parent)
+				public GeoNode Create(Runtime rt, GeoParent parent)
 				{
 					var node = new GeoNode(parent)
 					{
@@ -35,239 +58,71 @@ namespace Quad64.Scripts
 				}
 			}
 
-			public int off;
-			private byte _seg;
-			private bool _zbuf;
-			public bool end;
-			public byte code;
-#if DEBUG
-			public readonly ushort[] counter;
-#endif
-			public byte seg
-			{
-				get => _seg;
-				set
-				{
-					_seg = value;
-					if (_seg == 0)
-					{
-						data = default(ByteSegment);
-						end = true;
-					}
-					else
-					{
-						data = rom.getSegment(seg);
-					}
-				}
-			}
-			static public bool GetCmd(ref Runtime rt, out ByteSegment cmd )
-			{
-				if (rt.end || rt.off < 0 || rt._seg == 0 || rt.off >= rt.data.Length)
-				{
-					cmd = default(ByteSegment);
-					rt.end = true;
-				}
-				else
-				{
-					rt.data.Segment((uint)rt.off, (uint)getCmdLength(rt.data[rt.off], rt.data[rt.off+1]), out cmd);
-					rt.end = 0==cmd.Length;
-				}
-				return !rt.end;
-			}
-			unsafe public Runtime(Level level, Model3D mdl, GeoRoot root
+			public Runtime(
+				Level level,
+				Model3D mdl,
+				GeoRoot root
 #if DEBUG
 				, ushort[] counter=null
 #endif
-				)
+				) : base(Instance, level.rom)
 			{
+				if (null == (object)level || null == (object)mdl || null == (object)root)
+					throw new System.ArgumentNullException();
 				this._zbuf = true;
-				this.rom = level.rom;
 				this.lvl = level;
 				this.mdl = mdl;
 				this.rootNode = root;
+
 				this.nodeCurrent = null;
-				this._seg = 0;
-				this.code = 0;
-				this.end = false;
-				this.data = default(ByteSegment);
-				this.off = -1;
 #if DEBUG
 				this.counter = counter ?? new ushort[259];
 #endif
-				this.persistant = Persistant.reset;
 			}
-			public Runtime(ref Runtime copy, byte seg, uint off)
-				: this(copy.lvl, copy.mdl, copy.rootNode
-#if DEBUG
-					  , copy.counter
-#endif
-					  )
+			public Runtime(Runtime copy)
+				: base(copy)
 			{
-				this.seg = seg;
-				this.off = (int)off;
+				this.lvl = copy.lvl;
+				this.mdl = copy.mdl;
+				this.rootNode = copy.rootNode;
 				this.nodeCurrent = copy.nodeCurrent;
 				this._zbuf = copy._zbuf;
 				this.persistant = copy.persistant;
+#if DEBUG
+				this.counter = copy.counter;
+#endif
 			}
-			public Runtime(ref Runtime copy, SegmentOffset segOff) : this(ref copy, segOff.Segment, segOff.Offset) { }
-			
-
-			public static void Execute(
-				ref Runtime rt,
-				ref Runtime originator)
+			public Runtime(Runtime copy, SegmentOffset segOff) : this(copy)
 			{
-				Evaluate(ref rt);
+				SetSegment(this, segOff);
+			}
+			private static void EvaluateCopyState(
+				Runtime rt,
+				Runtime originator)
+			{
+				Evaluate(rt);
+
 				originator.nodeCurrent = rt.nodeCurrent;
 				originator._zbuf = rt._zbuf;
 				originator.persistant = rt.persistant;
 			}
+			
 
-			public delegate void Command(ref Runtime rt, ref ByteSegment cmd);
-
-			static class CommandList
-			{
-				static CommandList()
-				{
-
-				}
-				static object thread_lock = new object();
-				static BitList256 test_once;
-				static BitList256 test_result;
-
-
-				public static void EnsureMissing(ByteSegment command)
-				{
-					bool result;
-					byte name = command[0];
-					lock (thread_lock)
-					{
-						if (test_once.Add(name))
-						{
-							result = null != typeof(Runtime)
-								.GetMethod("CMD_" + name.ToString("X2"), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-							if (result) test_result.Add(name);
-						}
-						else
-						{
-							result = test_result.Contains(name);
-						}
-					}
-					if (result) throw new System.InvalidOperationException("Code is wrong, should have added command to switch statement " + (name.ToString("X2")));
-				}
-			}
-			static unsafe public void Evaluate(ref Runtime rt)
-			{
-				GeoParent switcher;
-				ByteSegment cmd;
-				var enter = new SegmentOffset() { Segment = rt._seg, Offset = (UInt24)rt.off };
-				//Console.WriteLine("--->" + enter);
-				while (GetCmd(ref rt, out cmd))
-				{
-#if DEBUG
-					rt.counter[cmd[0]]++;
-					int put_pos = 0;
-					if(null!=(object)rt.nodeCurrent)
-						for (; put_pos <= rt.nodeCurrent.Depth; ++put_pos)
-							System.Console.Write("| ");
-					if (cmd[0] == 0x05)
-						System.Console.Write("\'-");
-					else if (cmd[0] == 0x04)
-						System.Console.Write("+-");
-					else
-						System.Console.Write("|-");
-					put_pos++;
-					put_pos <<=1;
-
-					System.Console.Write(bytesToUInt16(cmd).ToString("X4"));
-					//System.Console.Write('+');
-					//System.Console.Write(cmd.Length.ToString("00"));
-					put_pos +=4;
-					while (put_pos++ < 40) System.Console.Write(' ');
-					// nintendo is very smart about selecting values with meaning.
-					// this should help deciphrer wahts going on.
-					if (0 != (cmd[0] & 1)) { System.Console.Write('A'); put_pos++; }
-					if (0 != (cmd[0] & 2)) { System.Console.Write('B'); put_pos++; }
-					if (0 != (cmd[0] & 4)) { System.Console.Write('C'); put_pos++; }
-					if (0 != (cmd[0] & 8)) { System.Console.Write('D'); put_pos++; }
-					if (0 != (cmd[0] & 16)) { System.Console.Write('E'); put_pos++; }
-					if (0 != (cmd[0] & 32)) { System.Console.Write('F'); put_pos++; }
-					if (0 != (cmd[0] & 64)) {System.Console.Write('G'); put_pos++; }
-					if (0 != (cmd[0] & 128)) { System.Console.Write('H'); put_pos++; }
-					while (put_pos++ < 49) System.Console.Write(' ');
-
-					for (int b = 2; b < cmd.Length; b++)
-					{
-						if (b != 2) System.Console.Write(' ');
-						System.Console.Write(cmd[b].ToString("X2"));
-					}
-					System.Console.WriteLine();
-#endif
-					if (cmd.Byte[0] != 0x05 && (switcher=rt.currentParent).isSwitch && switcher.switchPos != 1)
-					{
-						if (switcher.switchFunc == 0x8029DB48)
-						{
-							//rom.printArray(cmd, cmdLen);
-							//Console.WriteLine(nodeCurrent.switchPos);
-						}
-						switcher.switchPos++;
-						rt.off += cmd.Length;
-						continue;
-					}
-					/*
-					Console.Write("?CMD" + cmd[0].ToString("X2"));
-					for (int ic = 0; ic < cmd.Length; ic += 2)
-						Console.Write((0==ic?"!":",") + (0 == ic ? (short)cmd[1] : bytesToInt16(cmd, ic)));
-					if (1==(cmd.Length&1))
-						Console.Write(",!" + cmd[cmd.Length-1]);
-					Console.WriteLine();*/
-
-					switch (cmd.Byte[0])
-					{
-						case 0x00:CMD_00(ref rt, ref cmd);break;
-						case 0x01:CMD_01(ref rt, ref cmd);break;
-						case 0x03:CMD_03(ref rt, ref cmd);break;
-						case 0x02:CMD_02(ref rt, ref cmd);break;
-						case 0x04:CMD_04(ref rt, ref cmd);break;
-						case 0x05:CMD_05(ref rt, ref cmd);break;
-						case 0x0A:CMD_0A(ref rt, ref cmd);break;
-						case 0x0D:CMD_0D(ref rt, ref cmd);break;
-						case 0x0E:CMD_0E(ref rt, ref cmd);break;
-						case 0x10:CMD_10(ref rt, ref cmd);break;
-						case 0x11:CMD_11(ref rt, ref cmd);break;
-						case 0x13:CMD_13(ref rt, ref cmd);break;
-						case 0x14:CMD_14(ref rt, ref cmd);break;
-						case 0x15:CMD_15(ref rt, ref cmd);break;
-						case 0x16:CMD_16(ref rt, ref cmd);break;
-						case 0x19:CMD_19(ref rt, ref cmd);break;
-						case 0x1C:CMD_1C(ref rt, ref cmd);break;
-						case 0x1D:CMD_1D(ref rt, ref cmd);break;
-						case 0x20:CMD_20(ref rt, ref cmd);break;
-						default:/*MissingCheck.EnsureMissing(cmd);*/break;
-					}
-
-					rt.off += cmd.Length;
-
-					if ((switcher=rt.currentParent).isSwitch)
-						switcher.switchPos++;
-				}
-				//Console.WriteLine("<----" + enter + "=" + code);
-			}
 		}
-        public static GeoRoot parse(Model3D mdl, Level lvl, byte seg, uint off)
+		public static GeoRoot Parse(
+			Model3D mdl,
+			Level lvl,
+			SegmentOffset segOff)
         {
 #if DEBUG
 			System.Console.WriteLine("Start parse");
 #endif
 			var root = new GeoRoot(mdl);
-			var rt = new Runtime(lvl, mdl, root)
-			{
-				off = (int)off,
-				seg = seg,
-			};
-			Runtime.Evaluate(ref rt);
-			root.Code = rt.code;
-			var endingNode = rt.nodeCurrent;
+			var rt = new Runtime(lvl, mdl, root);
 
+			Runtime.SetSegment(rt, segOff);
+			root.Code = Runtime.Evaluate(rt);
+			var endingNode = rt.nodeCurrent;
 #if DEBUG
 			System.Console.WriteLine("End parse:"+(null==endingNode?"null":endingNode.Depth.ToString()));
 
@@ -279,15 +134,81 @@ namespace Quad64.Scripts
 			}
 #endif
 			root.Bind();
+
 			return mdl.root=root;
 		}
-		public static GeoRoot parse(Area area, byte seg, uint off)
+		public static GeoRoot Parse(Area area,
+			SegmentOffset segOff)
 		{
-			return parse(area.AreaModel, area.level, seg, off);
+			return Parse(area.AreaModel, area.level, segOff);
 		}
-		partial struct Runtime
+		// always takes over.
+		protected sealed override bool RunCommand(Script.Runtime _rt, CommandInfo info, ref ByteSegment cmd)
 		{
-			static public void CMD_00(ref Runtime rt, ref ByteSegment cmd)
+			Runtime rt = (Runtime)_rt;
+			GeoParent switcher;
+#if DEBUG
+			rt.counter[cmd[0]]++;
+			int put_pos = 0;
+			if (null != (object)rt.nodeCurrent)
+				for (; put_pos <= rt.nodeCurrent.Depth; ++put_pos)
+					System.Console.Write("| ");
+			if (cmd[0] == 0x05)
+				System.Console.Write("\'-");
+			else if (cmd[0] == 0x04)
+				System.Console.Write("+-");
+			else
+				System.Console.Write("|-");
+			put_pos++;
+			put_pos <<= 1;
+
+			System.Console.Write(bytesToUInt16(cmd).ToString("X4"));
+			//System.Console.Write('+');
+			//System.Console.Write(cmd.Length.ToString("00"));
+			put_pos += 4;
+			while (put_pos++ < 40) System.Console.Write(' ');
+			// Nintendo is very smart about selecting values with meaning.
+			// this should help decipher whats going on.
+			if (0 != (cmd[0] & 1)) { System.Console.Write('A'); put_pos++; }
+			if (0 != (cmd[0] & 2)) { System.Console.Write('B'); put_pos++; }
+			if (0 != (cmd[0] & 4)) { System.Console.Write('C'); put_pos++; }
+			if (0 != (cmd[0] & 8)) { System.Console.Write('D'); put_pos++; }
+			if (0 != (cmd[0] & 16)) { System.Console.Write('E'); put_pos++; }
+			if (0 != (cmd[0] & 32)) { System.Console.Write('F'); put_pos++; }
+			if (0 != (cmd[0] & 64)) { System.Console.Write('G'); put_pos++; }
+			if (0 != (cmd[0] & 128)) { System.Console.Write('H'); put_pos++; }
+			while (put_pos++ < 49) System.Console.Write(' ');
+
+			for (int b = 2; b < cmd.Length; b++)
+			{
+				if (b != 2) System.Console.Write(' ');
+				System.Console.Write(cmd[b].ToString("X2"));
+			}
+			System.Console.WriteLine();
+#endif
+			if (cmd[0] != 0x05 && 
+				(switcher = rt.currentParent).isSwitch &&
+				switcher.switchPos != 1)
+			{
+				if (switcher.switchFunc == 0x8029DB48)
+				{
+					//rom.printArray(cmd, cmdLen);
+					//Console.WriteLine(nodeCurrent.switchPos);
+
+					cmd = default(ByteSegment);
+				}
+			}else if (0 != (info.Traits & CommandInfoTraits.HasDelegate))
+				((Runtime.Command)info.Delegate)(rt, ref cmd);
+
+			if ((switcher = rt.currentParent).isSwitch)
+				switcher.switchPos++;
+
+			// we did (or decided not to do) the command so don't have the base do it.
+			return false;
+		}
+		partial class Runtime
+		{
+			static public void CMD_00(Runtime rt, ref ByteSegment cmd)
 			{
 				/*
 				var Address = bytesToSegmentOffset(cmd, 4);
@@ -309,35 +230,31 @@ namespace Quad64.Scripts
 																 
 
 			}
-			static public void CMD_01(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_01(Runtime rt, ref ByteSegment cmd)
 			{
-				rt.end = true;
-				rt.code = 0x01;
+				Exit(rt, 0x01);
 			}
-			static public void CMD_03(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_03(Runtime rt, ref ByteSegment cmd)
 			{
-				rt.end = true;
-				rt.code = 0x03;
+				Exit(rt, 0x03);
 			}
 
-			static public void CMD_02(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_02(Runtime rt, ref ByteSegment cmd)
 			{
-				if (!rt.end)
+				if (!rt.ended)
 				{
-					var jump = new Runtime(ref rt, bytesToSegmentOffset(cmd, 4));
-					Execute(ref jump, ref rt);
-					if (jump.code != 0x03)
-					{
-						rt.code = jump.code;
-						rt.end = true;
-					}
+					var jump = new Runtime(rt, bytesToSegmentOffset(cmd, 4));
+					EvaluateCopyState(jump, rt);
+
+					if (jump.returnCode != 0x03)
+						Exit(rt, rt.returnCode);
 				}
 			}
-			static public void CMD_04(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_04(Runtime rt, ref ByteSegment cmd)
 			{
 				var parent = rt.currentParent;
 
-				GeoNode newNode = rt.persistant.Create(ref rt, parent);
+				GeoNode newNode = rt.persistant.Create(rt, parent);
 				if (parent.callSwitch)
 				{
 					newNode.switchPos = 0;
@@ -348,7 +265,7 @@ namespace Quad64.Scripts
 				//if(nodeCurrent.Depth==0) System.Console.WriteLine("Hit Top");
 				rt.nodeCurrent = newNode;
 			}
-			static public void CMD_05(ref Runtime rt,ref ByteSegment cmd)
+			static public void CMD_05(Runtime rt,ref ByteSegment cmd)
 			{
 				if (null == (object)rt.nodeCurrent)
 				{
@@ -367,7 +284,7 @@ namespace Quad64.Scripts
 				}
 			}
 
-			static public void CMD_0E(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_0E(Runtime rt, ref ByteSegment cmd)
 			{
 				var switcher = rt.currentParent;
 				switcher.switchFunc = bytesToUInt32(cmd, 4);
@@ -377,7 +294,7 @@ namespace Quad64.Scripts
 				//nodeCurrent.callSwitch = true;
 			}
 
-			static public void CMD_0A(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_0A(Runtime rt, ref ByteSegment cmd)
 			{
 				if (cmd[1] != 0)
 				{
@@ -388,45 +305,56 @@ namespace Quad64.Scripts
 				rt.rootNode.Far = bytesToUInt16(cmd, 6);
 
 			}
-			static public void CMD_0D(ref Runtime rt,ref ByteSegment cmd)
+			static public void CMD_0D(Runtime rt,ref ByteSegment cmd)
 			{
 				rt.persistant.minDistance = bytesToInt16(cmd, 4);
 				rt.persistant.maxDistance = bytesToInt16(cmd, 6);
 			}
-			static public unsafe void CMD_10(ref Runtime rt, ref ByteSegment cmd)
+			static public unsafe void CMD_10(Runtime rt, ref ByteSegment cmd)
 			{
 				var parent = rt.currentParent;
 				parent.Cursor.translation = bytesToVector3s(cmd, 4);
 				parent.Cursor.rotation = bytesToVector3s(cmd, 10);
 			}
-			static public unsafe void CMD_11(ref Runtime rt, ref ByteSegment cmd)
+			static public unsafe void CMD_11(Runtime rt, ref ByteSegment cmd)
 			{
 				rt.rootNode.Pivot= bytesToVector3s(cmd, 2);
 				//persistant.transform.translation =default(Vector3s)- bytesToVector3s(cmd, 2);
 			}
-			private void F3D_Command(GeoModel model, byte drawLayer, byte seg, uint off)
+			private static void F3D_Command(
+				Runtime rt,
+				GeoModel model,
+				byte drawLayer,
+				SegmentOffset segOff)
 			{
-				using (ModelBuilder.NodeBinder.Bind(this.mdl.builder, model))
-					Fast3DScripts.parse(mdl, lvl, seg, off, drawLayer);
+				using (ModelBuilder.NodeBinder.Bind(
+					rt.mdl.builder,
+					model))
+					Fast3DScripts.Parse(
+						rt.mdl,
+						rt.lvl,
+						segOff,
+						overrideDrawLayer:drawLayer);
+
 				model.Build();
 			}
-			static public unsafe void CMD_13(ref Runtime rt, ref ByteSegment cmd)
+			static public unsafe void CMD_13(Runtime rt, ref ByteSegment cmd)
 			{
 				var seg_offset = bytesToSegmentOffset(cmd, 8);
 				rt.currentParent.Cursor.translation = bytesToVector3s(cmd, 2);
 				if (0u!=seg_offset)
 				{
-					CMD_04(ref rt, ref cmd);
+					CMD_04(rt, ref cmd);
 					var node = rt.nodeCurrent;
 					// Don't bother processing duplicate display lists.
 					//if (!mdl.hasGeoDisplayList(seg_offset.Offset))
-					rt.F3D_Command(node.StartModel(), cmd[1], seg_offset.Segment, seg_offset.Offset);
+					F3D_Command(rt, node.StartModel(), cmd[1], seg_offset);
 					//else
 					//{
 					//	Console.WriteLine("dupe:"+seg_offset.ToString("X8")+" "+x+" "+y+" "+z);
 					//}
 					//mdl.builder.Offset = default(Vector3);
-					CMD_05(ref rt, ref cmd);
+					CMD_05(rt, ref cmd);
 				}
 				else
 				{
@@ -438,12 +366,12 @@ namespace Quad64.Scripts
 
 			}
 
-			static public unsafe void CMD_14(ref Runtime rt, ref ByteSegment cmd)
+			static public unsafe void CMD_14(Runtime rt, ref ByteSegment cmd)
 			{
 				rt.nodeCurrent.forceBillboard = true;
 			}
 
-			static public unsafe void CMD_15(ref Runtime rt, ref ByteSegment cmd)
+			static public unsafe void CMD_15(Runtime rt, ref ByteSegment cmd)
 			{
 				// if (bytesToInt(cmd, 4, 4) != 0x07006D70) return;
 				var node = rt.nodeCurrent;
@@ -451,18 +379,18 @@ namespace Quad64.Scripts
 #if DEBUG
 				if (segOff == 0u) rt.counter[258]++;
 #endif
-					// Don't bother processing duplicate display lists.
-					//if (!mdl.hasGeoDisplayList(segOff.Offset))
-					{
-						Globals.DEBUG_PDL = segOff;
-						rt.F3D_Command(node.StartModel(), cmd[1], segOff.Segment, segOff.Offset);
-					}
+				// Don't bother processing duplicate display lists.
+				//if (!mdl.hasGeoDisplayList(segOff.Offset))
+				{
+					Globals.DEBUG_PDL = segOff;
+					F3D_Command(rt, node.StartModel(), cmd[1], segOff);
+				}
 				//else
 				//{
 				//	Console.WriteLine("dupe:" + bytesToInt(cmd, 4, 4).ToString("X8") + " ---");
 				//}
 			}
-			static public void CMD_16(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_16(Runtime rt, ref ByteSegment cmd)
 			{
 
 				// this seems to be what is expected.
@@ -476,7 +404,7 @@ namespace Quad64.Scripts
 				rt.rootNode.ShadowTransparency = cmd[5];
 				rt.rootNode.ShadowSize = bytesToUInt16(cmd, 6);
 			}
-			static public void CMD_19(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_19(Runtime rt, ref ByteSegment cmd)
 			{
 				rt.rootNode.Background = rt.currentParent;
 				rt.rootNode.BackgroundRam = bytesToUInt32(cmd, 4);
@@ -491,39 +419,54 @@ namespace Quad64.Scripts
 					rt.rootNode.BackgroundImageIndex = bytesToUInt16(cmd, 2);
 				}
 			}
-			static public void CMD_1C(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_1C(Runtime rt, ref ByteSegment cmd)
 			{
-				CMD_04(ref rt, ref cmd);
+				CMD_04(rt, ref cmd);
 				rt.nodeCurrent.ramAddress = bytesToUInt32(cmd, 8);
 			}
 
-			static public unsafe void CMD_1D(ref Runtime rt, ref ByteSegment cmd)
+			static public unsafe void CMD_1D(Runtime rt, ref ByteSegment cmd)
 			{
-				// this seems to be what is expected.
-				// when a list starts with this command it calls 0x05 (1+ count of 0x04 commands)
-				//if (null == nodeCurrent)
-				//	CMD_04(cmd);
-
 				var w = bytesToUInt16(cmd, 2);
-				/*
-				if (0x08 == cmd.Length)
-				{
-					nodeCurrent.Local.scale.Value = bytesToUInt32(cmd, 4);
-				}
-				else
-				{
-					nodeCurrent.Local.scale.Value = bytesToUInt32(cmd, 4);
-				}*/
 				rt.currentParent.Cursor.scale.Value = bytesToUInt32(cmd, 4);
-				//mdl.builder.applyScale(bytesToInt(cmd, 4, 4));
 			}
-			static public void CMD_20(ref Runtime rt, ref ByteSegment cmd)
+			static public void CMD_20(Runtime rt, ref ByteSegment cmd)
 			{
 				rt.rootNode.DrawDistance = bytesToUInt16(cmd, 2);
 			}
 		}
 
-        private static byte getCmdLength(byte cmd, byte cmd2)
+		protected sealed override CommandInfo GetCommandInfo(byte AA)
+		{
+			Runtime.Command Command;
+			switch (AA)
+			{
+				case 0x00: Command = Runtime.CMD_00; break;
+				case 0x01: Command = Runtime.CMD_01; break;
+				case 0x03: Command = Runtime.CMD_03; break;
+				case 0x02: Command = Runtime.CMD_02; break;
+				case 0x04: Command = Runtime.CMD_04; break;
+				case 0x05: Command = Runtime.CMD_05; break;
+				case 0x0A: Command = Runtime.CMD_0A; break;
+				case 0x0D: Command = Runtime.CMD_0D; break;
+				case 0x0E: Command = Runtime.CMD_0E; break;
+				case 0x10: Command = Runtime.CMD_10; break;
+				case 0x11: Command = Runtime.CMD_11; break;
+				case 0x13: Command = Runtime.CMD_13; break;
+				case 0x14: Command = Runtime.CMD_14; break;
+				case 0x15: Command = Runtime.CMD_15; break;
+				case 0x16: Command = Runtime.CMD_16; break;
+				case 0x19: Command = Runtime.CMD_19; break;
+				case 0x1C: Command = Runtime.CMD_1C; break;
+				case 0x1D: Command = Runtime.CMD_1D; break;
+				case 0x20: Command = Runtime.CMD_20; break;
+				default: Command = null; break;
+			}
+			return new CommandInfo(this, Command,
+				getCmdLength(AA, 0), getCmdLength(AA, 255));
+		}
+
+		private static byte getCmdLength(byte cmd, byte cmd2)
         {
             switch (cmd)
             {
@@ -558,5 +501,6 @@ namespace Quad64.Scripts
 					return 0 != cmd2 ? (byte)0x0C : (byte)0x08;
 			}
         }
+
     }
 }

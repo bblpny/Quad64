@@ -356,6 +356,7 @@ namespace Quad64
 			Unsupported = new RenderLayer(7);
 		public RenderCamera Camera;
 		public RenderObject Last => 0 == Count ? null : First.Next;
+		public GeoRoot AreaRoot;
 		public uint Count;
 
 		public bool SetupCamera(
@@ -1219,12 +1220,14 @@ namespace Quad64
 					if (mesh.DrawLayerMask == DrawLayerMask)
 						gi.Draw(ref mesh.State, options);
 
+				/*
 				GL.Color4((byte)0, (byte)0, (byte)255, (byte)255);
 				Gizmos.Arrow(4, 128, 32, 45, OpenTK.Vector3.UnitZ, OpenTK.Vector3.UnitX, OpenTK.Vector3.UnitY);
 				GL.Color4((byte)255, (byte)0, (byte)0, (byte)255);
 				Gizmos.Arrow(4, 128, 32, 45, OpenTK.Vector3.UnitX, OpenTK.Vector3.UnitY, OpenTK.Vector3.UnitZ);
 				GL.Color4((byte)0, (byte)255, (byte)0, (byte)255);
 				Gizmos.Arrow(4, 128, 32, 45, OpenTK.Vector3.UnitY, OpenTK.Vector3.UnitZ, OpenTK.Vector3.UnitX);
+				*/
 				GL.PopMatrix();
 			}
 		}

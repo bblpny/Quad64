@@ -2,11 +2,28 @@
 using System;
 using BubblePony.Alloc;
 using BubblePony.Integers;
-
+using System.Runtime.InteropServices;
 namespace Quad64.Scripts
 {
-	internal sealed class Fast3DScripts : Script
+	public sealed class Fast3DScripts : Script
 	{
+		private Fast3DScripts() : base(
+			RuntimeType: typeof(Runtime),
+			DelegateType: typeof(Runtime.Command),
+			PreflightRunCommand: false)
+		{ }
+
+		protected sealed override byte EvaluateRuntime(Script.Runtime Source)
+		{
+			return Runtime.Evaluate((Runtime)Source);
+		}
+		protected sealed override Script.Runtime CloneRuntime(Script.Runtime Source)
+		{
+			return new Runtime((Runtime)Source);
+		}
+
+		private static readonly Fast3DScripts Instance = new Fast3DScripts();
+
 		private struct F3D_Vertex : IEquatable<F3D_Vertex>, IEquatable<Vertex128>
 		{
 			public bool Equals(F3D_Vertex other)
@@ -175,7 +192,7 @@ namespace Quad64.Scripts
 
 		}
 		private static void LoadTriangle(
-			ref Runtime rt,
+			Runtime rt,
 			ref ByteSegment cmd,
 			ref Material mat,
 			ref F3D_VertexBuffer v,
@@ -184,21 +201,21 @@ namespace Quad64.Scripts
 			if (0 == (i & 8))
 				if (0 == (i & 4))
 					if (0 == (i & 2))
-						if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref v.j, ref v, j, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref v.k, ref v, j, k);
-					else if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref v.l, ref v, j, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref v.m, ref v, j, k);
+						if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref v.j, ref v, j, k); else LoadTriangle(rt, ref cmd, ref mat, ref v.k, ref v, j, k);
+					else if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref v.l, ref v, j, k); else LoadTriangle(rt, ref cmd, ref mat, ref v.m, ref v, j, k);
 				else if (0 == (i & 2))
-					if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref v.n, ref v, j, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref v.o, ref v, j, k);
-				else if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref v.p, ref v, j, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref v.q, ref v, j, k);
+					if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref v.n, ref v, j, k); else LoadTriangle(rt, ref cmd, ref mat, ref v.o, ref v, j, k);
+				else if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref v.p, ref v, j, k); else LoadTriangle(rt, ref cmd, ref mat, ref v.q, ref v, j, k);
 			else if (0 == (i & 4))
 				if (0 == (i & 2))
-					if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref v.r, ref v, j, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref v.s, ref v, j, k);
-				else if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref v.t, ref v, j, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref v.u, ref v, j, k);
+					if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref v.r, ref v, j, k); else LoadTriangle(rt, ref cmd, ref mat, ref v.s, ref v, j, k);
+				else if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref v.t, ref v, j, k); else LoadTriangle(rt, ref cmd, ref mat, ref v.u, ref v, j, k);
 			else if (0 == (i & 2))
-				if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref v.w, ref v, j, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref v.x, ref v, j, k);
-			else if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref v.y, ref v, j, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref v.z, ref v, j, k);
+				if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref v.w, ref v, j, k); else LoadTriangle(rt, ref cmd, ref mat, ref v.x, ref v, j, k);
+			else if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref v.y, ref v, j, k); else LoadTriangle(rt, ref cmd, ref mat, ref v.z, ref v, j, k);
 		}
 		private static void LoadTriangle(
-				ref Runtime rt,
+				Runtime rt,
 				ref ByteSegment cmd,
 				ref Material mat,
 				ref F3D_Vertex a,
@@ -208,21 +225,21 @@ namespace Quad64.Scripts
 			if (0 == (i & 8))
 				if (0 == (i & 4))
 					if (0 == (i & 2))
-						if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.j, ref v, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.k, ref v, k);
-					else if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.l, ref v, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.m, ref v, k);
+						if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.j, ref v, k); else LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.k, ref v, k);
+					else if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.l, ref v, k); else LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.m, ref v, k);
 				else if (0 == (i & 2))
-					if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.n, ref v, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.o, ref v, k);
-				else if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.p, ref v, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.q, ref v, k);
+					if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.n, ref v, k); else LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.o, ref v, k);
+				else if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.p, ref v, k); else LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.q, ref v, k);
 			else if (0 == (i & 4))
 				if (0 == (i & 2))
-					if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.r, ref v, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.s, ref v, k);
-				else if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.t, ref v, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.u, ref v, k);
+					if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.r, ref v, k); else LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.s, ref v, k);
+				else if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.t, ref v, k); else LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.u, ref v, k);
 			else if (0 == (i & 2))
-				if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.w, ref v, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.x, ref v, k);
-			else if (0 == (i & 1)) LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.y, ref v, k); else LoadTriangle(ref rt, ref cmd, ref mat, ref a, ref v.z, ref v, k);
+				if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.w, ref v, k); else LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.x, ref v, k);
+			else if (0 == (i & 1)) LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.y, ref v, k); else LoadTriangle(rt, ref cmd, ref mat, ref a, ref v.z, ref v, k);
 		}
 		private static void LoadTriangle(
-				ref Runtime rt,
+				Runtime rt,
 				ref ByteSegment cmd,
 				ref Material mat,
 				ref F3D_Vertex a,
@@ -292,277 +309,335 @@ namespace Quad64.Scripts
 			G_SETZIMG = 0xFE,
 			G_SETCIMG = 0xFF
 		}
-		static readonly BitList256 CMDList = (BitList256)UInt256.GetEnumDefined(typeof(CMD));
 
 		//static Material buildingMaterial = Material.Default;
 
-		private partial struct Runtime
+		new private sealed partial class Runtime : Script.Runtime.Impl<Runtime>, ILevelProperty
 		{
-			public readonly ROM rom;
 			public readonly Level lvl;
 			public readonly Model3D mdl;
-			public ByteSegment data;
+			Level ILevelProperty.Level => lvl;
 			public F3D_VertexBuffer vb;
 			public Material mat;
-			private byte _seg;
-			public int off;
-			public bool end;
-			public byte code;
-
-			public byte seg
+			public Runtime(
+				Level level,
+				Model3D mdl) : base(Instance, level.rom)
 			{
-				get => _seg;
-				set
-				{
-					_seg = value;
-					if (_seg == 0)
-					{
-						data = default(ByteSegment);
-						end = true;
-					}
-					else
-					{
-						data = rom.getSegment(seg);
-					}
-				}
-			}
-			public bool GetCmd(out ByteSegment cmd)
-			{
-				if (end || off < 0 || _seg == 0 || off > data.Length - 8)
-				{
-					cmd = default(ByteSegment);
-					end = true;
-				}
-				else
-				{
-					data.Segment((uint)off, 8u, out cmd);
-					if (!CMDList.Contains(cmd[0]))
-					{
-						end = true;
-						System.Console.Error.WriteLine("No such fast3d command! 0x" + (cmd[0]).ToString("X2"));
-						//throw new Exception("UNDEFINED FAST3D COMMAND: 0x"+cmd[0].ToString("X2"));
-					}
-				}
-				return !end;
-			}
-			public Runtime(Level level, Model3D mdl, byte drawLayerBillboard)
-			{
-				this.rom = level.rom;
-				this.mat = Material.Default;
-				this.mat.drawLayerBillboard = drawLayerBillboard;
-				this.vb = default(F3D_VertexBuffer);
+				if (null == mdl) throw new ArgumentNullException("mdl");
 				this.lvl = level;
 				this.mdl = mdl;
-				this._seg = 0;
-				this.code = 0;
-				this.end = false;
-				this.data = default(ByteSegment);
-				this.off = -1;
 			}
-			public Runtime(ref Runtime copy, byte seg, uint off) : this(copy.lvl, copy.mdl, copy.mat.drawLayerBillboard)
+			public Runtime(Runtime copy) : base(copy)
 			{
+				this.lvl = copy.lvl;
+				this.mdl = copy.mdl;
 				this.mat = copy.mat;
-				this.vb = copy.vb;
-				this.seg = seg;
-				this.off = (int)off;
 			}
-			public Runtime(ref Runtime copy, SegmentOffset segOff) : this(ref copy, segOff.Segment, segOff.Offset) { }
+			public Runtime(Runtime copy, SegmentOffset segOff) : this(copy)
+			{
+				SetSegment(this, segOff);
+			}
+		}
+		static class Late
+		{
+			public static readonly BitList256 CMDList = (BitList256)UInt256.GetEnumDefined(typeof(CMD));
+		}
+		protected sealed override CommandInfo GetCommandInfo(byte AA)
+		{
+			Runtime.Command Command;
+			if (!Late.CMDList.Contains(AA))
+				return null;
 
-			public byte Execute() { Evaluate(); return code; }
-			unsafe public void Evaluate()
+
+			switch ((CMD)AA)
 			{
-				ByteSegment cmd;
-				while (GetCmd(out cmd))
+				case CMD.F3D_NOOP:					Command = Runtime.CMD_00;break;
+				case CMD.F3D_MOVEMEM:				Command = Runtime.CMD_03;break;
+				case CMD.F3D_VTX:					Command = Runtime.CMD_04;break;
+				case CMD.F3D_DL:					Command = Runtime.CMD_06;break;
+				case CMD.F3D_CLEARGEOMETRYMODE:		Command = Runtime.CMD_B6;break;
+				case CMD.F3D_SETGEOMETRYMODE:		Command = Runtime.CMD_B7;break;
+				case CMD.F3D_ENDDL:					Command = Runtime.CMD_B8;break;
+				case CMD.F3D_TEXTURE:				Command = Runtime.CMD_BB;break;
+				case CMD.F3D_TRI1:					Command = Runtime.CMD_BF;break;
+				case CMD.G_SETTILESIZE:				Command = Runtime.CMD_F2;break;
+				case CMD.G_LOADBLOCK:				Command = Runtime.CMD_F3;break;
+				case CMD.G_SETTILE:					Command = Runtime.CMD_F5;break;
+				case CMD.G_SETCOMBINE:				Command = Runtime.CMD_FC;break;
+				case CMD.G_SETTIMG:					Command = Runtime.CMD_FD;break;
+				case CMD.G_SETENVCOLOR:				Command = Runtime.CMD_FB;break;
+				case CMD.G_SETFOGCOLOR:				Command = Runtime.CMD_F8;break;
+				case CMD.G_SETFILLCOLOR:			Command = Runtime.CMD_F7;break;
+				case CMD.G_SETBLENDCOLOR:			Command = Runtime.CMD_F9;break;
+				case CMD.G_SETPRIMCOLOR:			Command = Runtime.CMD_FA;break;
+				case CMD.F3D_SETOTHERMODE_H:		Command = Runtime.CMD_BA;break;
+				case CMD.F3D_SETOTHERMODE_L:		Command = Runtime.CMD_B9;break;
+				case CMD.G_RDPSETOTHERMODE:			Command = Runtime.CMD_EF;break;
+				case CMD.F3D_MOVEWORD:				Command = Runtime.CMD_BC;break;
+				case CMD.G_RDPPIPESYNC:
+				case CMD.G_RDPTILESYNC:
+				case CMD.G_RDPLOADSYNC:
+				case CMD.G_RDPFULLSYNC:				Command = null; break;
+				default:
+					System.Console.WriteLine("Unhandled:" + (CMD)AA);Command = null; break;
+					//throw new System.InvalidOperationException("Unhandled:" + (CMD)AA);
+			}
+			return new CommandInfo(this, Command, 8);
+		}
+		public static byte Parse(
+			Model3D mdl,
+			Level lvl,
+			SegmentOffset segOff,
+			byte overrideDrawLayer = 0)
+		{
+			var rt = new Runtime(lvl, mdl);
+
+			//if (ignoreMaterialInput)
+				rt.mat = Material.Default;
+			//else
+			//	rt.mat = material;
+
+			if (0 != overrideDrawLayer)
+				rt.mat.drawLayerBillboard = overrideDrawLayer;
+
+			Runtime.SetSegment(rt, segOff);
+
+			var ret = Runtime.Evaluate(rt);
+
+			return ret;
+		}
+		partial class Runtime
+		{
+			public static void CMD_00(Runtime rt, ref ByteSegment cmd)
+			{
+				var segoff = bytesToSegmentOffset(cmd, 0);
+
+				if (segoff.Offset != 0)
 				{
-					//rom.printArray(cmd, 8);
-					switch ((CMD)cmd[0])
-					{
-						case CMD.F3D_NOOP:
-							CMD_00(cmd);
-							break;
-						case CMD.F3D_MOVEMEM:
-							CMD_03(cmd);
-							break;
-						case CMD.F3D_VTX:
-							CMD_04(cmd);
-							break;
-						case CMD.F3D_DL:
-							CMD_06(cmd);
-							break;
-						case CMD.F3D_CLEARGEOMETRYMODE:
-							CMD_B6(cmd);
-							break;
-						case CMD.F3D_SETGEOMETRYMODE:
-							CMD_B7(cmd);
-							break;
-						case CMD.F3D_ENDDL:
-							CMD_B8(cmd);
-							break;
-						case CMD.F3D_TEXTURE:
-							CMD_BB(cmd);
-							break;
-						case CMD.F3D_TRI1:
-							CMD_BF(cmd);
-							break;
-						case CMD.G_SETTILESIZE:
-							CMD_F2(cmd);
-							break;
-						case CMD.G_LOADBLOCK:
-							CMD_F3(cmd);
-							break;
-						case CMD.G_SETTILE:
-							CMD_F5(cmd);
-							break;
-						case CMD.G_SETCOMBINE:
-							CMD_FC(cmd);
-							break;
-						case CMD.G_SETTIMG:
-							CMD_FD(cmd);
-							break;
-					}
-					off += 8;
+					Exit(rt, segoff.Segment);
 				}
 			}
-		}
-		public static byte parse(
-			Model3D mdl, Level lvl, byte seg, uint off, byte drawLayer = 1)
-		{
-			return new Runtime(lvl, mdl, drawLayer)
+			public static void CMD_03(Runtime rt,ref ByteSegment cmd)
 			{
-				seg = seg,
-				off = (int)off,
-			}.Execute();
-		}
-		partial struct Runtime
-		{
-			public void CMD_00(ByteSegment cmd)
-			{
-				if (bytesToUInt24(cmd, 1) != 0)
-				{
-					code = cmd[0];
-					end = true;
-				}
+				switchTextureStatus(rt, ref rt.mat, true);
+				F3D_MOVEMEM(rt, ref rt.mat, ref cmd);
 			}
-			public void CMD_03(ByteSegment cmd)
+			public static void CMD_04(Runtime rt,ref ByteSegment cmd)
 			{
-				switchTextureStatus(ref mat, true);
-				F3D_MOVEMEM(ref mat, ref cmd);
-			}
-			public void CMD_04(ByteSegment cmd)
-			{
-				switchTextureStatus(ref mat, false);
+				switchTextureStatus(rt, ref rt.mat, false);
 				//if (tempMaterial.id != 0) return;
-				if (!F3D_VTX(ref cmd))
+				if (!rt.F3D_VTX(ref cmd))
 				{
-					code = 0x04;
-					end = true;
+					Exit(rt, 0x04);
 				}
 			}
-			public void CMD_06(ByteSegment cmd)
+			public static void CMD_06(Runtime rt,ref ByteSegment cmd)
 			{
-				F3D_DL(ref cmd);
+				var rt2 = new Runtime(rt, bytesToSegmentOffset(cmd, 4));
+
+				Evaluate(rt2);
+
+				//when we branch (1)
+				// we inherit whatever was done.
 				if (cmd[1] == 1)
 				{
-					code = 0x06;
-					end = true;
+					rt.mat = rt2.mat;
+					rt.vb = rt2.vb;
+					// and terminate.
+					Exit(rt, 0x06);
 				}
+				// otherwise, we do not.
 			}
-			public void CMD_B6(ByteSegment cmd)
+			public static void CMD_B6(Runtime rt,ref ByteSegment cmd)
 			{
-				mat.geometryMode &= ~bytesToUInt32(cmd, 4);
+				rt.mat.geometryMode &= ~bytesToUInt32(cmd, 4);
 			}
-			public void CMD_B7(ByteSegment cmd)
+			public static void CMD_B7(Runtime rt,ref ByteSegment cmd)
 			{
-				mat.geometryMode |= bytesToUInt32(cmd, 4);
+				rt.mat.geometryMode |= bytesToUInt32(cmd, 4);
 			}
-			public void CMD_B8(ByteSegment cmd)
+			public static void CMD_B8(Runtime rt,ref ByteSegment cmd)
 			{
-				end = true;
-				code = 0x0B8;
+				Exit(rt, 0x0B8);
 			}
-			public void CMD_BB(ByteSegment cmd)
+
+			public static void CMD_BA(Runtime rt,ref ByteSegment cmd)
 			{
-				F3D_TEXTURE(ref mat, ref cmd);
+				//F3D_SETOTHERMODE_H
+				ExpandSetMode(cmd, ref rt.mat.Homode);
 			}
-			public void CMD_BF(ByteSegment cmd)
+			public static void CMD_BC(Runtime rt,ref ByteSegment cmd)
+			{//MOVEWORD
+				MOVEWORD(ref rt.mat, cmd);
+			}
+			public static void CMD_B9(Runtime rt, ref ByteSegment cmd)
 			{
-				switchTextureStatus(ref mat, false);
+				//F3D_SETOTHERMODE_L
+				ExpandSetMode(cmd, ref rt.mat.Lomode);
+			}
+			public static void CMD_EF(Runtime rt, ref ByteSegment cmd)
+			{
+				//	G_RDPSETOTHERMODE
+				rt.mat.Homode = (rt.mat.Homode & ((1u << 24) - 1)) | 
+					(bytesToUInt32(cmd) & ((1u << 24) - 1));
+				rt.mat.Lomode = bytesToUInt32(cmd, 4);
+			}
+			public static void CMD_BB(Runtime rt,ref ByteSegment cmd)
+			{
+				F3D_TEXTURE(ref rt.mat, ref cmd);
+			}
+			public static void CMD_BF(Runtime rt,ref ByteSegment cmd)
+			{
+				switchTextureStatus(rt, ref rt.mat, false);
 				//if (tempMaterial.id != 0) return;
-				F3D_TRI1(ref vb, ref mat, ref cmd);
+				rt.F3D_TRI1(ref rt.vb, ref rt.mat, ref cmd);
 			}
-			public void CMD_F2(ByteSegment cmd)
+			public static void CMD_F2(Runtime rt,ref ByteSegment cmd)
 			{
-				switchTextureStatus(ref mat, true);
-				G_SETTILESIZE(ref cmd, ref mat);
+				switchTextureStatus(rt, ref rt.mat, true);
+				G_SETTILESIZE(ref cmd, ref rt.mat);
 			}
-			public void CMD_F3(ByteSegment cmd)
+			public static void CMD_F3(Runtime rt,ref ByteSegment cmd)
 			{
 			}
-			public void CMD_F5(ByteSegment cmd)
+			public static void CMD_F5(Runtime rt,ref ByteSegment cmd)
 			{
-				G_SETTILE(ref mat, ref cmd);
+				G_SETTILE(ref rt.mat, ref cmd);
 			}
-			public void CMD_F8(ByteSegment cmd)
+			public static void CMD_F7(Runtime rt,ref ByteSegment cmd)
 			{
-				mat.fogColor = (Color4b)bytesToUInt32(cmd, 4);
+				rt.mat.fillColor = (Color4b)bytesToUInt32(cmd, 4);
 			}
-			public void CMD_FB(ByteSegment cmd)
+			public static void CMD_F8(Runtime rt,ref ByteSegment cmd)
 			{
-				mat.combineColor = (Color4b)bytesToUInt32(cmd, 4);
+				rt.mat.fogColor = (Color4b)bytesToUInt32(cmd, 4);
 			}
-			public void CMD_FC(ByteSegment cmd)
+			public static void CMD_FB(Runtime rt,ref ByteSegment cmd)
 			{
-				if (G_SETCOMBINE(ref mat, ref cmd))
-					switchTextureStatus(ref mat, true);
+				rt.mat.envColor = (Color4b)bytesToUInt32(cmd, 4);
 			}
-			public void CMD_FD(ByteSegment cmd)
+			public static void CMD_F9(Runtime rt,ref ByteSegment cmd)
 			{
-				switchTextureStatus(ref mat, true);
-				G_SETTIMG(ref mat, ref cmd);
+				rt.mat.blendColor = (Color4b)bytesToUInt32(cmd, 4);
+			}
+			public static void CMD_FA(Runtime rt,ref ByteSegment cmd)
+			{
+				rt.mat.primColor = (Color4b)bytesToUInt32(cmd, 4);
+			}
+			public static void CMD_FC(Runtime rt,ref ByteSegment cmd)
+			{
+				if (G_SETCOMBINE(ref rt.mat, ref cmd))
+					switchTextureStatus(rt,ref rt.mat, true);
+			}
+			public static void CMD_FD(Runtime rt,ref ByteSegment cmd)
+			{
+				switchTextureStatus(rt, ref rt.mat, true);
+				G_SETTIMG(ref rt.mat, ref cmd);
 			}
 		}
-		partial struct Runtime
+		partial class Runtime
 		{
-			private unsafe void switchTextureStatus(ref Material temp, bool status)
+			private static unsafe void switchTextureStatus(Runtime rt, ref Material temp, bool status)
 			{
-				if (mdl.builder.processingTexture != status)
+				if (rt.mdl.builder.processingTexture != status)
 				{
 					if (status == false)
 					{
 						if (
-							!mdl.builder.hasTexture(temp.segOff, temp.Register()))
+							!rt.mdl.builder.hasTexture(temp.segOff, temp.Register()))
 						{
 							//System.Console.WriteLine("Adding new texture!");
 							if (temp.segOff.Value != 0)
 							{
 								//System.Console.WriteLine("temp.segOff = " + temp.segOff.ToString("X8"));
-								mdl.builder.AddTexture(
-									rom.getTexture(ref temp),
-									mdl.builder.newTexInfo(temp.wrapModes),
+								rt.mdl.builder.AddTexture(
+									rt.rom.getTexture(ref temp),
+									rt.mdl.builder.newTexInfo(temp.wrapModes),
 									temp.segOff, temp.Register()
 								);
 							}
 							else
 							{
-								mdl.builder.AddTexture(
-									TextureFormats.ColorTexture(System.Drawing.Color.FromArgb((int)temp.color)),
-									mdl.builder.newTexInfo(temp.wrapModes),
+								rt.mdl.builder.AddTexture(
+									TextureFormats.ColorTexture(temp.lightColor),
+									rt.mdl.builder.newTexInfo(temp.wrapModes),
 									temp.segOff, temp.Register()
 								);
 							}
 						}
 					}
-					mdl.builder.processingTexture = status;
+					rt.mdl.builder.processingTexture = status;
 				}
 			}
 
-			private unsafe void F3D_MOVEMEM(ref Material temp, ref ByteSegment cmd)
+			private static void MOVEWORD(ref Material mat, ByteSegment cmd)
+			{
+
+				var offset = bytesToUInt16(cmd, 1);
+				var index = cmd[3];
+				if (index == 0)
+				{
+					if (0 == (offset & 0x20))
+					{
+						BindMatrix(
+							ref mat.I,
+							(ushort)(offset & 0x1Fu),
+							bytesToInt16(cmd, 4),
+							bytesToInt16(cmd, 6));
+					}
+					else
+					{
+						BindMatrix(
+							ref mat.I,
+							(ushort)(offset & 0x1Fu),
+							bytesToInt16(cmd, 4),
+							bytesToInt16(cmd, 6));
+					}
+				}
+				else if (index == 2)
+				{
+					mat.numLightWord = bytesToUInt32(cmd, 4);
+				}
+				else if (index == 4)
+				{
+					if (offset == 0x04)
+						mat.clipNX = bytesToUInt32(cmd, 4);
+					else if (offset == 0x0C)
+						mat.clipNY = bytesToUInt32(cmd, 4);
+					if (offset == 0x14)
+						mat.clipPX = bytesToUInt32(cmd, 4);
+					else if (offset == 0x1C)
+						mat.clipPY = bytesToUInt32(cmd, 4);
+				}
+				else if (index == 8)
+				{
+					mat.fogWord = bytesToUInt32(cmd, 4);
+					if (mat.fogWord != 0)
+					{
+						OpenTK.Graphics.OpenGL.GL.Fog(OpenTK.Graphics.OpenGL.FogParameter.FogMode, (int)OpenTK.Graphics.OpenGL.FogMode.FragmentDepth);
+						//hack: this should be per object.
+						OpenTK.Graphics.OpenGL.GL.Fog(
+							OpenTK.Graphics.OpenGL.FogParameter.FogStart,
+							(float)mat.fogOffset / 255);
+
+						OpenTK.Graphics.OpenGL.GL.Fog(
+							OpenTK.Graphics.OpenGL.FogParameter.FogDensity,
+							(float)mat.fogMultiplier / 255);
+					}
+				}
+				else if (index == 10)
+				{
+					mat.light[offset >> 5, ((offset >> 2) & 1)] = bytesToUInt32(cmd, 4);
+				}
+				// todo: 6 = segment, 12 = points, 14 = perspnorm.
+			}
+			private static void F3D_MOVEMEM(Runtime rt, ref Material temp, ref ByteSegment cmd)
 			{
 				if (cmd[1] == 0x86)
 				{
 					//ROM rom = ROM.Instance;
-					temp.color = (Color4b)(bytesToUInt24(
-						rom.getDataFromSegmentAddress(bytesToSegmentOffset(cmd, 4), 3),
+					temp.lightColor = (Color4b)(bytesToUInt24(
+						rt.rom.getDataFromSegmentAddress(bytesToSegmentOffset(cmd, 4), 3),
 						0) | 0xFF000000u);
 					//rom.printArray(colData, 4);
 				}
@@ -570,13 +645,24 @@ namespace Quad64.Scripts
 				{
 
 					temp.darkColor = (Color4b)(bytesToUInt24(
-						rom.getDataFromSegmentAddress(bytesToSegmentOffset(cmd, 4), 3),
+						rt.rom.getDataFromSegmentAddress(bytesToSegmentOffset(cmd, 4), 3),
 						0) | 0xFF000000u);
 				}
 				else
 				{
 					Console.WriteLine("Got a color:" + cmd[1].ToString("X2"));
 				}
+			}
+			static void ExpandSetMode(ByteSegment cmd, ref uint bits)
+			{
+				unchecked
+				{
+					bits = (bits & ~((uint)((1uL << (sbyte)cmd[3]) - 1uL) << (sbyte)cmd[2]))
+						| bytesToUInt32(cmd, 4);
+				}
+			}
+			private static void BindMatrix(ref Matrix4s Matrix, ushort Offset, short A, short B)
+			{
 			}
 			private unsafe bool F3D_VTX(ref ByteSegment cmd)
 			{
@@ -595,16 +681,7 @@ namespace Quad64.Scripts
 				}
 				return ret;
 			}
-
-			private unsafe void F3D_DL(ref ByteSegment cmd)
-			{
-				// i'm guessing we are to copy the material and vb back..
-				var rt2 = new Runtime(ref this, bytesToSegmentOffset(cmd, 4));
-				rt2.Evaluate();
-				vb = rt2.vb;
-				mat = rt2.mat;
-			}
-			private unsafe void F3D_TEXTURE(ref Material temp, ref ByteSegment cmd)
+			private static unsafe void F3D_TEXTURE(ref Material temp, ref ByteSegment cmd)
 			{
 				ushort tsX = (ushort)bytesToUInt16(cmd, 4);
 				ushort tsY = (ushort)bytesToUInt16(cmd, 6);
@@ -621,7 +698,7 @@ namespace Quad64.Scripts
 				}
 			}
 
-			private void LoadVertexShared(out Vector3 position, out Vector2 texCoord, ref Vertex128 v, ref Material mat)
+			private static void LoadVertexShared(out Vector3 position, out Vector2 texCoord, ref Vertex128 v, ref Material mat)
 			{
 				position.X = v.x;
 				position.Y = v.y;
@@ -631,7 +708,7 @@ namespace Quad64.Scripts
 				texCoord.Y = (float)(((int)v.v * mat.texScaleY) / (double)ushort.MaxValue);
 
 			}
-			private void LoadVertexShared(
+			private static void LoadVertexShared(
 				out Vector3 position, out Vector2 texCoord, out Vector3 normal, ref Vertex128 v, ref Material mat)
 			{
 				LoadVertexShared(out position, out texCoord, ref v, ref mat);
@@ -639,7 +716,7 @@ namespace Quad64.Scripts
 				normal.Y = ByteUtility.b2n[v.ny_g];
 				normal.Z = ByteUtility.b2n[v.nz_b];
 			}
-			private void LoadVertexShared(
+			private static void LoadVertexShared(
 				out Vector3 position, out Vector2 texCoord, out Vector4 color, ref Vertex128 v, ref Material mat)
 			{
 				LoadVertexShared(out position, out texCoord, ref v, ref mat);
@@ -648,7 +725,7 @@ namespace Quad64.Scripts
 				color.Z = ByteUtility.b2f[v.nz_b];
 				color.W = 1f;
 			}
-			private void LoadFaceNormal(ref F3D_Vertex a, ref F3D_Vertex b, ref F3D_Vertex c, out Vector3 normal)
+			private static void LoadFaceNormal(ref F3D_Vertex a, ref F3D_Vertex b, ref F3D_Vertex c, out Vector3 normal)
 			{
 				Vector3d temp0, temp1, temp2;
 
@@ -716,10 +793,10 @@ namespace Quad64.Scripts
 				if ((temp.geometryMode & 0x20000) != 0)
 				{
 					// face normal..
-					temp_color.X = temp.color.r;
-					temp_color.Y = temp.color.g;
-					temp_color.Z = temp.color.b;
-					temp_color.W = temp.color.a;
+					temp_color.X = temp.lightColor.r;
+					temp_color.Y = temp.lightColor.g;
+					temp_color.Z = temp.lightColor.b;
+					temp_color.W = temp.lightColor.a;
 
 					temp_vertex = (Vertex128)a;
 					LoadVertexShared(out temp_pos, out temp_uv, out temp_normal, ref temp_vertex, ref temp);
@@ -758,19 +835,19 @@ namespace Quad64.Scripts
 			{
 				//System.Console.WriteLine("Adding new Triangle: " + a_pos + "," + b_pos + "," + c_pos);
 
-				Fast3DScripts.LoadTriangle(ref this, ref cmd, ref temp, ref vertices,
+				Fast3DScripts.LoadTriangle(this, ref cmd, ref temp, ref vertices,
 					cmd[5] / 0x0A,
 					cmd[6] / 0x0A,
 					cmd[7] / 0x0A);
 			}
 
-			private unsafe void G_SETTILESIZE(ref ByteSegment cmd, ref Material temp)
+			private static unsafe void G_SETTILESIZE(ref ByteSegment cmd, ref Material temp)
 			{
 				temp.w = (ushort)((((cmd[5] << 8) | (cmd[6] & 0xF0)) >> 6) + 1);
 				temp.h = (ushort)((((cmd[6] & 0x0F) << 8 | cmd[7]) >> 2) + 1);
 			}
 
-			private unsafe void G_SETTILE(ref Material temp, ref ByteSegment cmd)
+			private static unsafe void G_SETTILE(ref Material temp, ref ByteSegment cmd)
 			{
 				if (cmd[4] == 0x00) // Make sure the tile is TX_RENDERTILE (0x0) and not TX_LOADTILE (0x7)
 				{
@@ -791,8 +868,11 @@ namespace Quad64.Scripts
 				}
 			}
 
-			private unsafe bool G_SETCOMBINE(ref Material temp, ref ByteSegment cmd)
+			static private unsafe bool G_SETCOMBINE(ref Material temp, ref ByteSegment cmd)
 			{
+				temp.Hcomb = bytesToUInt32(cmd, 0);
+				temp.Lcomb = bytesToUInt32(cmd, 4);
+
 				if ((~bytesToUInt24(cmd, 1)) == 0)
 				{
 					temp.segOff = 0;
@@ -800,7 +880,7 @@ namespace Quad64.Scripts
 				}
 				return false;
 			}
-			private unsafe void G_SETTIMG(ref Material temp, ref ByteSegment cmd)
+			private static void G_SETTIMG(ref Material temp, ref ByteSegment cmd)
 			{
 				temp.segOff = bytesToSegmentOffset(cmd, 4);
 			}

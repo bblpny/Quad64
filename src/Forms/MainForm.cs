@@ -27,7 +27,7 @@ namespace Quad64
         Matrix4 ProjMatrix;
 		private object gl_lock = new object();
         bool isMouseDown = false, isShiftDown = false, moveState = false;
-        static Level level;
+        Level level;
         float FOV = 1.048f;
 
         public Level getLevelData { get { return level; } }
@@ -106,7 +106,7 @@ Want to export vertex colors?
 		{
 			if (area == null)
 			{
-				var level = MainForm.level;
+				var level =this.level;
 				if (null == level)
 					return false;
 				area = level.getCurrentArea();
@@ -359,8 +359,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 			{
 				rom.getSegment(0x15);
 				Level testLevel = new Level(rom, rom.getSegment(0x15), entry.ID, 1);
-
-				LevelScripts.parse(testLevel, 0x15, 0);
+				LevelScripts.Parse(testLevel, new SegmentOffset { Segment = 0x15 });
 				foreach(var area in testLevel.Areas)
 				{
 					testLevel.CurrentAreaID = area.AreaID;
@@ -486,16 +485,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
             rom.setSegment(0x15, Globals.seg15_location[0], Globals.seg15_location[1], false);
             rom.setSegment(0x02, Globals.seg02_location[0], Globals.seg02_location[1], rom.isSegmentMIO0(0x02));
 
-            level = new Level(rom, rom.getSegment(0x15), 0x10, 1);
-            LevelScripts.parse(level, 0x15, 0);
-            level.sortAndAddNoModelEntries();
-            level.CurrentAreaID = level.Areas[0].AreaID;
-            refreshObjectsInList();
-            glControl1.Enabled = true;
-            bgColor = Color.CornflowerBlue;
-            camera.setLevel(level);
-            updateAreaButtons();
-            glControl1.Invalidate();
+            SetLevel(new Level(rom, rom.getSegment(0x15), 0x10, 1),false);
         }
 
         private void refreshObjectsInList()
@@ -560,6 +550,11 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 			}
 
 		}
+
+		static GraphicsState PickingGraphicsState = new GraphicsState
+		{
+		};
+
 		private void GL_Paint(object sender, PaintEventArgs e) {
 
 			GL.ClearColor(bgColor);
@@ -591,8 +586,25 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					GL.Enable(EnableCap.Normalize);
 
 				}
+				render_list.AreaRoot = null;
+				if (null != (object)level)
+				{
+					var area = level.getCurrentArea();
+					if (null != (object)area &&
+						null != (object)area.AreaModel)
+					{
+						render_list.AreaRoot = area.AreaModel.root;
 
-					GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+						if (null != render_list.AreaRoot &&
+							render_list.AreaRoot.Far != render_list.AreaRoot.Near)
+						{
+							gi.FogFar = render_list.AreaRoot.Far;
+							gi.FogNear = render_list.AreaRoot.Near;
+						}	
+					}
+				}
+
+				GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
                 GL.MatrixMode(MatrixMode.Projection);
 				GL.LoadMatrix(ref render_list.Camera.Proj);
 				//GL.LoadMatrix(ref render_list.Camera.ViewProj);
@@ -608,13 +620,11 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 
 				//level.getCurrentArea().drawPicking();
 				//level.getCurrentArea().drawEverything();
-				if (Globals.renderCollisionMap)
-					level.getCurrentArea().collision.drawCollisionMap(false);
-
 				render_list.Clear();
 
 //				using (var layer = new RenderList())
 				{
+					GL.Enable(EnableCap.Normalize);
 					var options = Globals.doBackfaceCulling ? (DrawOptions)0 : DrawOptions.NoCullingChanges;
 					options |= DrawOptions.ForceInvalidate;
 					level.getCurrentArea().renderEverything(render_list);
@@ -658,6 +668,9 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					GL.DepthMask(false);
 					render_list.Transparent.Draw(gi, options);//<-- transparents.
 					ResetGL();
+					gi.State = PickingGraphicsState;
+					gi.Bind();
+
 					//layer.DrawModels((byte)(255 & (~((1 << 4)|(1<<5)|(1<<6)|(1<<1)))), ref Camera);//<-- transparents.
 					// bounds..
 					render_list.DrawBounds();
@@ -1094,18 +1107,11 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					var rom = ROM.Instance;
 					//Console.WriteLine("Changing Level to " + newLevel.levelID);
 					Level testLevel = new Level(rom, rom.getSegment(0x15), newLevel.levelID, 1);
-					LevelScripts.parse(testLevel, 0x15, 0);
+					var material = Material.Default;
+					LevelScripts.Parse(testLevel, new SegmentOffset { Segment = 0x15, });
 					if (testLevel.Areas.Count > 0)
 					{
-						level = testLevel;
-						camera.setCameraMode(CameraMode.FLY, ref camMtx);
-						camera.setLevel(level);
-						level.sortAndAddNoModelEntries();
-						level.CurrentAreaID = level.Areas[0].AreaID;
-						resetObjectVariables();
-						refreshObjectsInList();
-						glControl1.Invalidate();
-						updateAreaButtons();
+						SetLevel(testLevel,true);
 					}
 					else
 					{
@@ -1116,7 +1122,45 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 			}
         }
 
+		private void SetLevel(Level testLevel, bool tested = false)
+		{
+			level = testLevel;
+			if (tested)
+			{
+				camera.setCameraMode(CameraMode.FLY, ref camMtx);
+				camera.setLevel(level);
+				level.sortAndAddNoModelEntries();
+				level.CurrentAreaID = level.Areas[0].AreaID;
+				resetObjectVariables();
+				refreshObjectsInList();
+				glControl1.Invalidate();
+				updateAreaButtons();
+			}
+			else
+			{
+				LevelScripts.Parse(level, new SegmentOffset { Segment = 0x15, });
 
+				level.sortAndAddNoModelEntries();
+				level.CurrentAreaID = level.Areas[0].AreaID;
+				refreshObjectsInList();
+				glControl1.Enabled = true;
+				bgColor = Color.CornflowerBlue;
+				camera.setLevel(level);
+				updateAreaButtons();
+				glControl1.Invalidate();
+			}
+			var area = level.getCurrentArea();
+			if(null != area && null != area.AreaModel)
+			{
+				var root = area.AreaModel.root;
+				if (root != null && root.FOVInt > 0) {
+					FOV = (float)((Math.PI * root.FOVInt)/180);
+					FarPlane = root.Far;
+					NearPlane = root.Near;
+					UpdateProjection();
+				}
+			}
+		}
         private void testROMToolStripMenuItem_Click(object sender, EventArgs e)
         {
             LaunchROM.OpenEmulator(this);
@@ -1219,6 +1263,8 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 			UpdateProjection();
             glControl1.Invalidate();
         }
+		private double NearPlane = 100;
+		private double FarPlane = 69999;
 		private void UpdateProjection()
 		{
 			/*
@@ -1288,8 +1334,8 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 				Matrix4d.CreatePerspectiveFieldOfView(
 					FOV, 
 					(double)glControl1.Width / glControl1.Height,
-					100,
-					69999);
+					NearPlane,
+					FarPlane);
 
 			for (byte r = 0; r < 4; r++)
 				for (byte c = 0; c < 4; c++)

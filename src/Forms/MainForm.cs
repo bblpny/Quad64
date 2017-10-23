@@ -392,7 +392,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 			glControl1.Enabled = false;
             KeyPreview = true;
             treeView1.HideSelection = false;
-            camera.updateMatrix(ref camMtx);
+            camera.Update(ref camMtx, force:true);
 			fileToolStripMenuItem.DropDownItems.Add("Export Area").Click += ExportButton;
 			fileToolStripMenuItem.DropDownItems.Add("Export Everything").Click += ExportEverythingButton;
 			//foreach(ObjectComboEntry entry in Globals.objectComboEntries) Console.WriteLine(entry.ToString());
@@ -427,7 +427,8 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 				{
 					if (!GraphicsHandle.Drain(out id, out kind))
 					{
-						GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
+						if(!this.isMouseDown)
+							GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
 						if (!GraphicsHandle.Drain(out id, out kind))
 						{
 							drainTimer.Interval = DRAIN_INTERVAL_POST_GC_NOTHING;
@@ -487,54 +488,74 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 
             SetLevel(new Level(rom, rom.getSegment(0x15), 0x10, 1),false);
         }
-
-        private void refreshObjectsInList()
+		private static TreeNode[] GenerateTreeNodes(
+			System.Collections.Generic.List<Object3D> List
+			)
+		{
+			Object3D Current;
+			TreeNode[] Nodes = new TreeNode[List.Count];
+			for(int i= List.Count - 1; i >= 0; --i)
+			{
+				Current = List[i];
+				Nodes[i] = new TreeNode(Current.Title = Current.getObjectComboName());
+			}
+			return Nodes;
+		}
+		private static TreeNode[] GenerateTreeNodesGeneric<T>(
+			System.Collections.Generic.List<T> List
+			)
+		{
+			TreeNode[] Nodes = new TreeNode[List.Count];
+			for (int i = List.Count - 1; i >= 0; --i)
+				Nodes[i] = new TreeNode(List[i].ToString());
+			return Nodes;
+		}
+		private static TreeNode[] GenerateTreeNodesGeneric<TA,TB,TC>(
+			System.Collections.Generic.List<TA> ListA,
+			System.Collections.Generic.List<TB> ListB,
+			System.Collections.Generic.List<TC> ListC
+			)
+		{
+			int ACount = ListA.Count;
+			int BCount = ListB.Count;
+			int CCount = ListC.Count;
+			int AStart = 0, BStart = ACount, CStart = BStart + BCount;
+			TreeNode[] Nodes = new TreeNode[CStart+CCount];
+			for (int i = CCount - 1; i >= 0; --i)
+				Nodes[CStart + i] = new TreeNode(ListC[i].ToString());
+			for (int i = BCount - 1; i >= 0; --i)
+				Nodes[BStart + i] = new TreeNode(ListB[i].ToString());
+			for (int i = ACount - 1; i >= 0; --i)
+				Nodes[AStart + i] = new TreeNode(ListA[i].ToString());
+			return Nodes;
+		}
+		private void refreshObjectsInList()
         {
             Globals.list_selected = -1;
             Globals.item_selected = -1;
             propertyGrid1.SelectedObject = null;
-            TreeNode objects = treeView1.Nodes[0];
-            objects.Nodes.Clear();
-            foreach (Object3D obj in level.getCurrentArea().Objects)
-            {
-                obj.Title = obj.getObjectComboName();
-                objects.Nodes.Add(obj.Title);
-               // objects.Nodes.Add("0x" + obj.Behavior.ToString("X8"));
-            }
+			treeView1.BeginUpdate();
+			try
+			{
+				TreeNode objects = treeView1.Nodes[0];
+				TreeNode macro_objects = treeView1.Nodes[1];
+				TreeNode special_objects = treeView1.Nodes[2];
+				TreeNode warps = treeView1.Nodes[3];
+				objects.Nodes.Clear();
+				macro_objects.Nodes.Clear();
+				special_objects.Nodes.Clear();
+				warps.Nodes.Clear();
 
-            TreeNode macro_objects = treeView1.Nodes[1];
-            macro_objects.Nodes.Clear();
-            foreach (Object3D obj in level.getCurrentArea().MacroObjects)
-            {
-                obj.Title = obj.getObjectComboName();
-                macro_objects.Nodes.Add(obj.Title);
-                //macro_objects.Nodes.Add("0x" + obj.Behavior.ToString("X8"));
-            }
-
-            TreeNode special_objects = treeView1.Nodes[2];
-            special_objects.Nodes.Clear();
-            foreach (Object3D obj in level.getCurrentArea().SpecialObjects)
-            {
-                obj.Title = obj.getObjectComboName();
-                special_objects.Nodes.Add(obj.Title);
-                //special_objects.Nodes.Add("0x" + obj.Behavior.ToString("X8"));
-            }
-
-            TreeNode warps = treeView1.Nodes[3];
-            warps.Nodes.Clear();
-            foreach (Warp warp in level.getCurrentArea().Warps)
-            {
-                warps.Nodes.Add(warp.ToString());
-            }
-            foreach (Warp warp in level.getCurrentArea().PaintingWarps)
-            {
-                warps.Nodes.Add(warp.ToString());
-            }
-            foreach (WarpInstant warp in level.getCurrentArea().InstantWarps)
-            {
-                warps.Nodes.Add(warp.ToString());
-            }
-        }
+				objects.Nodes.AddRange(GenerateTreeNodes(level.getCurrentArea().Objects));
+				macro_objects.Nodes.AddRange(GenerateTreeNodes(level.getCurrentArea().MacroObjects));
+				special_objects.Nodes.AddRange(GenerateTreeNodes(level.getCurrentArea().SpecialObjects));
+				warps.Nodes.AddRange(GenerateTreeNodesGeneric(level.getCurrentArea().Warps, level.getCurrentArea().PaintingWarps, level.getCurrentArea().InstantWarps));
+			}
+			finally
+			{
+				treeView1.EndUpdate();
+			}
+		}
 		private GraphicsInterface gi;
 		private void glControl1_Paint(object sender, PaintEventArgs e)
 		{
@@ -551,13 +572,28 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 
 		}
 
+		static GraphicsState BoundsGraphicsState = new GraphicsState
+		{
+			FeatureMask = FeatureMask.ZTest,
+		};
 		static GraphicsState PickingGraphicsState = new GraphicsState
 		{
+			FeatureMask = FeatureMask.ZTest| FeatureMask.ZWrite,
+		};
+		static GraphicsState ArrowGraphicsState = new GraphicsState
+		{
+			FeatureMask = FeatureMask.Lit,
+			Ambient = Color4b.Default_Ambient,
+			Diffuse = Color4b.White,
+			LightMode = LightMode.Hard1,
+			Culling = Culling.Back,
+			Light1 = { Normal = { X = -1, Y = -1, Z = -1, }, Color = Color4b.Default_Diffuse, },
 		};
 
 		private void GL_Paint(object sender, PaintEventArgs e) {
 
 			GL.ClearColor(bgColor);
+			Color4b.White.GL_LoadLightModel(LightModelParameter.LightModelAmbient);
 			var gi = this.gi ?? (this.gi = new GraphicsInterface());
 			if (level != null)
 			{
@@ -578,13 +614,14 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 						 camera.Pitch,
 						 camera.Yaw);
 					// something is really screwy with the camera.				new Vector4(-camera.forward, 0)
-					Vector4 lightDir = new Vector4(
-						(render_list.Camera.X + render_list.Camera.Z+(2*render_list.Camera.Y)).Normalized(),
-						0);
-					GL.Light(LightName.Light0, LightParameter.Position, lightDir);
-					GL.Enable(EnableCap.Light0);
-					GL.Enable(EnableCap.Normalize);
+					//Vector4 lightDir = new Vector4(
+					//	(render_list.Camera.X + render_list.Camera.Z+(2*render_list.Camera.Y)).Normalized(),
+					//	0);
+					//GL.Light(LightName.Light0, LightParameter.Position, lightDir);
 
+					//GL.Enable(EnableCap.Light0);
+					//GL.Enable(EnableCap.Normalize);
+					gi.Camera = camera.Transform;
 				}
 				render_list.AreaRoot = null;
 				if (null != (object)level)
@@ -603,14 +640,20 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 						}	
 					}
 				}
+				GL.PolygonOffset(-1, -1);
 
 				GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
                 GL.MatrixMode(MatrixMode.Projection);
 				GL.LoadMatrix(ref render_list.Camera.Proj);
 				//GL.LoadMatrix(ref render_list.Camera.ViewProj);
 				GL.MatrixMode(MatrixMode.Modelview);
-				GL.LoadMatrix(ref render_list.Camera.View);
 				//GL.LoadIdentity();
+				GL.LoadMatrix(ref render_list.Camera.View);
+
+				//Color4b.White.GL_LoadMaterial(MaterialFace.FrontAndBack, MaterialParameter.Diffuse);
+
+				//Color4b.White.GL_LoadMaterial(MaterialFace.FrontAndBack, MaterialParameter.Ambient);
+
 				if (Globals.doWireframe)
 					GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
 				else
@@ -624,17 +667,17 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 
 //				using (var layer = new RenderList())
 				{
-					GL.Enable(EnableCap.Normalize);
+					//GL.Enable(EnableCap.Normalize);
 					var options = Globals.doBackfaceCulling ? (DrawOptions)0 : DrawOptions.NoCullingChanges;
 					options |= DrawOptions.ForceInvalidate;
 					level.getCurrentArea().renderEverything(render_list);
 					render_list.UpdateLayers();
 					ResetGL();
-					GL.Disable(EnableCap.AlphaTest);
-					GL.AlphaFunc(AlphaFunction.Always, 0.5f);
-					GL.Disable(EnableCap.Blend);
-					GL.BlendFunc(BlendingFactorSrc.One, BlendingFactorDest.Zero);
-					GL.DepthFunc(DepthFunction.Less);
+					//GL.Disable(EnableCap.AlphaTest);
+					//GL.AlphaFunc(AlphaFunction.Always, 0.5f);
+					//GL.Disable(EnableCap.Blend);
+					//GL.BlendFunc(BlendingFactorSrc.One, BlendingFactorDest.Zero);
+					//GL.DepthFunc(DepthFunction.Less);
 					render_list.Solid.Draw(gi,options);
 					// i haven't found any forum posts about draw layer 2.
 					// from looking at what is on it, it seems that draw layer 2 is dedicated to
@@ -643,33 +686,33 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					//
 					// this leads me to believe that the 2nd bit, when present (such as layer 6 (shadows))
 					// should have the depth offset active.. turns out this is probably the case, since shadows would clip otherwise.
-					GL.DepthFunc(DepthFunction.Lequal);
-					GL.PolygonOffset(-1, -1);
-					GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
-					GL.Enable(EnableCap.PolygonOffsetFill);
+					//GL.DepthFunc(DepthFunction.Lequal);
+					//GL.PolygonOffset(-1, -1);
+					//GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
+					//GL.Enable(EnableCap.PolygonOffsetFill);
 					render_list.SolidDecal.Draw(gi, options);
 					render_list.Decal.Draw(gi, options);
-					ResetGL();
-					GL.Enable(EnableCap.AlphaTest);
-					GL.AlphaFunc(AlphaFunction.Gequal, 1.0f);
+					//ResetGL();
+					//GL.Enable(EnableCap.AlphaTest);
+					//GL.AlphaFunc(AlphaFunction.Gequal, 1.0f);
 					render_list.SemiTransparent.Draw(gi, options);
-					ResetGL();
-					GL.Enable(EnableCap.Blend);
-					GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
-					GL.DepthFunc(DepthFunction.Lequal);
-					GL.PolygonOffset(-1, -1);
-					GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
-					GL.Enable(EnableCap.PolygonOffsetFill);
+					//ResetGL();
+					//GL.Enable(EnableCap.Blend);
+					//GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
+					//GL.DepthFunc(DepthFunction.Lequal);
+					//GL.PolygonOffset(-1, -1);
+					//GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
+					//GL.Enable(EnableCap.PolygonOffsetFill);
 					render_list.Shadow.Draw(gi, options);//<-- shadows.
 					ResetGL();
-					GL.Enable(EnableCap.DepthTest);
-					GL.AlphaFunc(AlphaFunction.Greater, 0f);
-					GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
-					GL.DepthMask(false);
+					//GL.Enable(EnableCap.DepthTest);
+					//GL.AlphaFunc(AlphaFunction.Greater, 0f);
+					//GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
+					//GL.DepthMask(false);
 					render_list.Transparent.Draw(gi, options);//<-- transparents.
-					ResetGL();
-					gi.State = PickingGraphicsState;
-					gi.Bind();
+					//ResetGL();
+					gi.State = BoundsGraphicsState;
+					gi.Bind(ForceInvalidate:true);
 
 					//layer.DrawModels((byte)(255 & (~((1 << 4)|(1<<5)|(1<<6)|(1<<1)))), ref Camera);//<-- transparents.
 					// bounds..
@@ -677,6 +720,34 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 
 					if (Globals.doWireframe)
 						GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+
+					if (Globals.showCameraAxes)
+					{
+						gi.State = ArrowGraphicsState;
+						gi.Bind(ForceInvalidate: true);
+						GL.MatrixMode(MatrixMode.Modelview);
+						GL.PushMatrix();
+						//						GL.LoadMatrix(ref camMtx);
+						GL.LoadIdentity();
+						GL.Translate(new Vector3(400, -200, -1000));
+						var q = gi.Camera.rotation.Inverted();
+						TransformUtility.GL_Rotate(ref q);
+						int stemWidth = 8, stemHeight = 196, arrowWidth = 24, arrowHeight = 64;
+						gi.State.Diffuse = Color4b.Red;
+						gi.State.Ambient = new Color4b(80, 40, 40);
+						gi.Bind();
+						Gizmos.Arrow(stemWidth, stemHeight, arrowWidth, arrowHeight, Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ);
+						gi.State.Diffuse = Color4b.Green;
+						gi.State.Ambient = new Color4b(40, 80, 40);
+						gi.Bind();
+						Gizmos.Arrow(stemWidth, stemHeight, arrowWidth, arrowHeight, Vector3.UnitY, Vector3.UnitZ, Vector3.UnitX);
+						gi.State.Diffuse = Color4b.Blue;
+						gi.State.Ambient = new Color4b(40, 40, 80);
+						gi.Bind();
+						Gizmos.Arrow(stemWidth, stemHeight, arrowWidth, arrowHeight, Vector3.UnitZ, Vector3.UnitX, Vector3.UnitY);
+						Color4b.White.GL_Load();
+						GL.PopMatrix();
+					}
 				}
 
 
@@ -685,23 +756,24 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
         }
 		public static void ResetGL()
 		{
-			GL.Enable(EnableCap.Blend);
-			GL.Disable(EnableCap.AlphaTest);
+			//GL.Enable(EnableCap.Blend);
+			//GL.Disable(EnableCap.AlphaTest);
 			GL.AlphaFunc(AlphaFunction.Always, 0f);
 			GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
-			GL.Enable(EnableCap.Texture2D);
-			GL.Disable(EnableCap.Normalize);
-			GL.Disable(EnableCap.AutoNormal);
-			GL.Disable(EnableCap.PolygonSmooth);
+			//GL.Enable(EnableCap.Texture2D);
+			//GL.Disable(EnableCap.Normalize);
+			//GL.Disable(EnableCap.AutoNormal);
+			//GL.Disable(EnableCap.PolygonSmooth);
 			GL.DepthMask(true);
-			GL.DisableClientState(ArrayCap.VertexArray);
-			GL.DisableClientState(ArrayCap.NormalArray);
-			GL.DisableClientState(ArrayCap.ColorArray);
-			GL.DisableClientState(ArrayCap.TextureCoordArray);
+			//GL.DisableClientState(ArrayCap.VertexArray);
+			//GL.DisableClientState(ArrayCap.NormalArray);
+			//GL.DisableClientState(ArrayCap.ColorArray);
+			//GL.DisableClientState(ArrayCap.TextureCoordArray);
 			//GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
-			GL.Disable(EnableCap.Fog);
-			GL.Disable(EnableCap.PolygonOffsetFill);
-			GL.CullFace(0); GL.PolygonOffset(0, 0);
+			//GL.Disable(EnableCap.Fog);
+			//GL.Disable(EnableCap.PolygonOffsetFill);
+			//GL.CullFace(0);
+			//GL.PolygonOffset(0, 0);
 
 
 		}
@@ -709,8 +781,10 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 		private void selectObject(int mx, int my)
         {
             int h = glControl1.Height;
-            //Console.WriteLine("Picking... mx = "+mx+", my = "+my);
-            GL.ClearColor(1.0f, 1.0f, 1.0f, 1.0f); // Set background to solid white
+
+			if (gi != null) { gi.State = PickingGraphicsState; gi.Bind(ForceInvalidate: true); }
+			//Console.WriteLine("Picking... mx = "+mx+", my = "+my);
+			GL.ClearColor(1.0f, 1.0f, 1.0f, 1.0f); // Set background to solid white
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             GL.MatrixMode(MatrixMode.Projection);
             GL.LoadMatrix(ref ProjMatrix);
@@ -745,12 +819,9 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                         propertyGrid1.SelectedObject = 
                             level.getCurrentArea().SpecialObjects[Globals.item_selected];
                         break;
-                }
-                if (camera.isOrbitCamera())
-                {
-                    camera.updateOrbitCamera(ref camMtx);
+				}
+				if (camera.updateCheckInvalidate(ref camMtx))
                     glControl1.Invalidate();
-                }
             }
             Color pickedColor = Color.FromArgb(pixel[0], pixel[1], pixel[2]);
             //Console.WriteLine(pickedColor.ToString());
@@ -764,13 +835,14 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
             if (e.Button == MouseButtons.Right)
             {
                 selectObject(e.X, e.Y);
+				camera.updateResetInvalidate(ref camMtx);
                 glControl1.Invalidate();
             }
         }
 
         private void glControl1_MouseUp(object sender, MouseEventArgs e)
         {
-            camera.resetMouseStuff();
+            camera.SwallowNextCursor();
             isMouseDown = false;
             if (!isShiftDown)
                 moveState = false;
@@ -778,7 +850,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 
         private void glControl1_MouseLeave(object sender, EventArgs e)
         {
-            camera.resetMouseStuff();
+            camera.SwallowNextCursor();
             isMouseDown = false;
         }
 
@@ -788,23 +860,26 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
             {
                 if (!isShiftDown && !moveState)
                 {
-                    camera.updateCameraMatrixWithMouse(e.X, e.Y, ref camMtx);
+                    camera.CursorRotate(e.X, e.Y, ref camMtx);
                 }
                 else
                 {
                     moveState = true;
-                    camera.updateCameraOffsetWithMouse(savedCamPos, e.X, e.Y, glControl1.Width, glControl1.Height, ref camMtx);
+                    camera.CursorPan(savedCamPos, e.X, e.Y, glControl1.Width, glControl1.Height, ref camMtx);
                 }
-                glControl1.Invalidate();
+
+				if (camera.CheckInvalidate())
+					glControl1.Invalidate();
             }
         }
 
         private void glControl1_Wheel(object sender, MouseEventArgs e)
         {
-            camera.resetMouseStuff();
-            camera.updateCameraMatrixWithScrollWheel(e.Delta * 1.5, ref camMtx);
+            camera.SwallowNextCursor();
+            camera.Scroll(e.Delta * 1.5, ref camMtx);
             savedCamPos = camera.Position;
-            glControl1.Invalidate();
+			if(camera.CheckInvalidate())
+	            glControl1.Invalidate();
         }
 
         private void glControl1_KeyUp(object sender, KeyEventArgs e)
@@ -845,7 +920,8 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
             glControl1.Context.Update(glControl1.WindowInfo);
             GL.Viewport(0, 0, glControl1.Width, glControl1.Height);
 			UpdateProjection();
-            glControl1.Invalidate();
+			camera.ResetInvalidate();
+			glControl1.Invalidate();
         }
         
         private void loadROMToolStripMenuItem_Click(object sender, EventArgs e)
@@ -902,7 +978,8 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
         {
             SettingsForm settings = new SettingsForm();
             settings.ShowDialog();
-            glControl1.Invalidate();
+			camera.ResetInvalidate();
+			glControl1.Invalidate();
             propertyGrid1.Refresh();
             glControl1.Update(); // Needed after calling propertyGrid1.Refresh();
         }
@@ -977,8 +1054,9 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                         }
                         break;
                     }
-            }
-            glControl1.Invalidate();
+			}
+			camera.ResetInvalidate();
+			glControl1.Invalidate();
             propertyGrid1.Refresh();
             glControl1.Update(); // Needed after calling propertyGrid1.Refresh();
         }
@@ -1026,9 +1104,23 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
             {
                 level.CurrentAreaID = toArea;
                 refreshObjectsInList();
-                glControl1.Invalidate();
+				MoveToStart();
+				camera.Update(ref camMtx);
+				camera.ResetInvalidate();
+				glControl1.Invalidate();
             }
         }
+		private bool MoveToStart()
+		{
+			if (null == (object)level) return false;
+			var area = level.getCurrentArea();
+			if (null == (object)area || area.startPoints == null || 0 == area.startPoints.Length)
+				return false;
+			camera.Position = (Vector3)area.startPoints[0].translation + new Vector3 { Y = 300, };
+			camera.Yaw_Degrees = 180+area.startPoints[0].rotation.Y;
+			camera.Pitch = 0;
+			return true;
+		}
 
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
@@ -1127,13 +1219,12 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 			level = testLevel;
 			if (tested)
 			{
-				camera.setCameraMode(CameraMode.FLY, ref camMtx);
-				camera.setLevel(level);
+				camera.SetCameraMode(CameraMode.FLY, ref camMtx);
+				camera.SetLevel(level);
 				level.sortAndAddNoModelEntries();
 				level.CurrentAreaID = level.Areas[0].AreaID;
 				resetObjectVariables();
 				refreshObjectsInList();
-				glControl1.Invalidate();
 				updateAreaButtons();
 			}
 			else
@@ -1145,12 +1236,13 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 				refreshObjectsInList();
 				glControl1.Enabled = true;
 				bgColor = Color.CornflowerBlue;
-				camera.setLevel(level);
+				camera.SetLevel(level);
 				updateAreaButtons();
-				glControl1.Invalidate();
 			}
 			var area = level.getCurrentArea();
-			if(null != area && null != area.AreaModel)
+			MoveToStart();
+			camera.Update(ref camMtx);
+			if (null != area && null != area.AreaModel)
 			{
 				var root = area.AreaModel.root;
 				if (root != null && root.FOVInt > 0) {
@@ -1160,6 +1252,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					UpdateProjection();
 				}
 			}
+			glControl1.Invalidate();
 		}
         private void testROMToolStripMenuItem_Click(object sender, EventArgs e)
         {
@@ -1193,40 +1286,34 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                     Globals.list_selected = 0;
                     Globals.item_selected = node.Index;
                     propertyGrid1.SelectedObject = level.getCurrentArea().Objects[node.Index];
-                    if (camera.isOrbitCamera())
-                    {
-                        camera.updateOrbitCamera(ref camMtx);
-                        glControl1.Invalidate();
-                    }
-                    //int addr = level.getCurrentArea().Objects[node.Index].getROMAddress();
-                    //ROM.Instance.printROMSection(addr, addr + 0x18);
-                }
+
+					if (camera.updateCheckInvalidate(ref camMtx))
+						glControl1.Invalidate();
+					//int addr = level.getCurrentArea().Objects[node.Index].getROMAddress();
+					//ROM.Instance.printROMSection(addr, addr + 0x18);
+				}
                 else if (node.Parent.Text.Equals("Macro 3D Objects"))
                 {
                     Globals.list_selected = 1;
                     Globals.item_selected = node.Index;
                     propertyGrid1.SelectedObject = level.getCurrentArea().MacroObjects[node.Index];
-                    if (camera.isOrbitCamera())
-                    {
-                        camera.updateOrbitCamera(ref camMtx);
-                        glControl1.Invalidate();
-                    }
-                    //int addr = level.getCurrentArea().MacroObjects[node.Index].getROMAddress();
-                    //ROM.Instance.printROMSection(addr, addr + 10);
-                }
+
+					if (camera.updateCheckInvalidate(ref camMtx))
+						glControl1.Invalidate();
+					//int addr = level.getCurrentArea().MacroObjects[node.Index].getROMAddress();
+					//ROM.Instance.printROMSection(addr, addr + 10);
+				}
                 else if (node.Parent.Text.Equals("Special 3D Objects"))
                 {
                     Globals.list_selected = 2;
                     Globals.item_selected = node.Index;
                     propertyGrid1.SelectedObject = level.getCurrentArea().SpecialObjects[node.Index];
-                    if (camera.isOrbitCamera())
-                    {
-                        camera.updateOrbitCamera(ref camMtx);
-                        glControl1.Invalidate();
-                    }
-                    //int addr = level.getCurrentArea().SpecialObjects[node.Index].getROMAddress();
-                    //ROM.Instance.printROMSection(addr, addr + 12);
-                }
+
+					if (camera.updateCheckInvalidate(ref camMtx))
+						glControl1.Invalidate();
+					//int addr = level.getCurrentArea().SpecialObjects[node.Index].getROMAddress();
+					//ROM.Instance.printROMSection(addr, addr + 12);
+				}
                 else if (node.Parent.Text.Equals("Warps"))
                 {
                     Globals.list_selected = 3;
@@ -1249,7 +1336,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                 obj.UpdateProperties();
                 propertyGrid1.Refresh();
             }
-            
+			camera.ResetInvalidate();
             glControl1.Invalidate();
             glControl1.Update();
         }
@@ -1261,6 +1348,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
             if (FOV < 0.1f)
                 FOV = 0.1f;
 			UpdateProjection();
+			camera.ResetInvalidate();
             glControl1.Invalidate();
         }
 		private double NearPlane = 100;
@@ -1361,8 +1449,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                             = obj.getObjectComboName();
                 }
                 obj.updateROMData();
-                if (camera.isOrbitCamera())
-                    camera.updateOrbitCamera(ref camMtx);
+                camera.updateResetInvalidate(ref camMtx);
                 glControl1.Invalidate();
             }
             else if (Globals.list_selected == 3)
@@ -1419,9 +1506,9 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
         {
             if (radioButton2.Checked)
             {
-                camera.setCameraMode(CameraMode.ORBIT, ref camMtx);
-                camera.updateMatrix(ref camMtx);
-                glControl1.Invalidate();
+                camera.SetCameraMode(CameraMode.ORBIT, ref camMtx);
+				if(camera.CheckInvalidate())
+	                glControl1.Invalidate();
             }
         }
 
@@ -1429,9 +1516,9 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
         {
             if (radioButton1.Checked)
             {
-                camera.setCameraMode(CameraMode.FLY, ref camMtx);
-                camera.updateMatrix(ref camMtx);
-                glControl1.Invalidate();
+                camera.SetCameraMode(CameraMode.FLY, ref camMtx);
+				if(camera.CheckInvalidate())
+					glControl1.Invalidate();
             }
         }
 
@@ -1461,11 +1548,12 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
         {
             if (moveCam_InOut_mouseDown)
             {
-                camera.resetMouseStuff();
-                camera.updateCameraMatrixWithScrollWheel((e.Y - moveCam_InOut_lastPosY) * -10, ref camMtx);
+                camera.SwallowNextCursor();
+                camera.Scroll((e.Y - moveCam_InOut_lastPosY) * -10, ref camMtx);
                 savedCamPos = camera.Position;
                 moveCam_InOut_lastPosY = e.Y;
-                glControl1.Invalidate();
+				if(camera.CheckInvalidate())
+	                glControl1.Invalidate();
             }
         }
         
@@ -1477,7 +1565,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
         }
         private void moveCam_strafe_MouseUp(object sender, MouseEventArgs e)
         {
-            camera.resetMouseStuff();
+            camera.SwallowNextCursor();
             moveCam_strafe_mouseDown = false;
         }
 
@@ -1485,8 +1573,9 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
         {
             if (moveCam_strafe_mouseDown)
             {
-                camera.updateCameraOffsetWithMouse(savedCamPos, e.X, e.Y, glControl1.Width, glControl1.Height, ref camMtx);
-                glControl1.Invalidate();
+                camera.CursorPan(savedCamPos, e.X, e.Y, glControl1.Width, glControl1.Height, ref camMtx);
+				if(camera.CheckInvalidate())
+					glControl1.Invalidate();
             }
         }
         
@@ -1587,8 +1676,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                         obj.zPos = (short)(moveObj_savedZ - (short)(CZ * my * speedMult * Globals.objSpeedMultiplier) - (short)(CZ_2 * mx * speedMult * Globals.objSpeedMultiplier));
                     if (keepOnGround.Checked)
                         dropObjectToGround();
-                    if (camera.isOrbitCamera())
-                        camera.updateOrbitCamera(ref camMtx);
+                    camera.updateResetInvalidate(ref camMtx);
                     glControl1.Invalidate();
                     propertyGrid1.Refresh();
                     glControl1.Update(); // Needed after calling propertyGrid1.Refresh();
@@ -1624,8 +1712,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                     if (obj == null) return;
                     if (obj.IsReadOnly) return;
                     obj.yPos -= (short)(30 * (e.Y - moveObj_UpDown_lastMouseY) * Globals.objSpeedMultiplier);
-                    if (camera.isOrbitCamera())
-                        camera.updateOrbitCamera(ref camMtx);
+                    camera.updateResetInvalidate(ref camMtx);
                     glControl1.Invalidate();
                     propertyGrid1.Refresh();
                     glControl1.Update(); // Needed after calling propertyGrid1.Refresh();
@@ -1693,8 +1780,8 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                         obj.zRot = keepDegreesWithin360(obj.zRot);
                     }
 
-                    if (camera.isOrbitCamera())
-                        camera.updateOrbitCamera(ref camMtx);
+                    //if (camera.isOrbitCamera())
+                    camera.updateResetInvalidate(ref camMtx);
                     glControl1.Invalidate();
                     propertyGrid1.Refresh();
                     glControl1.Update(); // Needed after calling propertyGrid1.Refresh();
@@ -1718,8 +1805,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                 Object3D obj = getSelectedObject();
                 if (obj == null) return;
                 obj.yPos = level.getCurrentArea().collision.dropToGround(new Vector3(obj.xPos, obj.yPos, obj.zPos));
-                if (camera.isOrbitCamera())
-                    camera.updateOrbitCamera(ref camMtx);
+                camera.updateResetInvalidate(ref camMtx);
                 glControl1.Invalidate();
                 propertyGrid1.Refresh();
                 glControl1.Update(); // Needed after calling propertyGrid1.Refresh();
@@ -1781,8 +1867,7 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                         obj.yRot -= (short)((e.Y - rotObj_Yaw_lastMouseY) * Globals.objSpeedMultiplier);
                         obj.yRot = keepDegreesWithin360(obj.yRot);
                     }
-                    if (camera.isOrbitCamera())
-                        camera.updateOrbitCamera(ref camMtx);
+                    camera.updateResetInvalidate(ref camMtx);
                     glControl1.Invalidate();
                     propertyGrid1.Refresh();
                     glControl1.Update(); // Needed after calling propertyGrid1.Refresh();

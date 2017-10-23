@@ -34,7 +34,8 @@ namespace Quad64
 		{
 			return IntSin(1024 - value);
 		}
-
+		const int arrow_sides = 8;
+		const int arrow_shift = 9;
 		public static void Arrow(
 			float stem_radius,
 			float stem_length,
@@ -44,7 +45,7 @@ namespace Quad64
 			Vector3 side0,
 			Vector3 side1)
 		{
-			Vector3 next_a, next_b, nrm0, nrm1, nrm2, nrm3;
+			Vector3 next_a, next_b, nrm0, nrm1, nrm2, nrm3,nm;
 			Vector2 sc;
 			Vector3.Multiply(ref forward, stem_length, out Vector3 arrow_start);
 			Vector3.Multiply(ref forward, head_length + stem_length, out Vector3 head_point);
@@ -67,28 +68,37 @@ namespace Quad64
 				if (head_radius != 0)
 				{
 					GL.Begin(PrimitiveType.TriangleFan);
-					for (int i = 0; i != 16; i++)
-						GL.Vertex3(arrow_start + (nrm2 * IntCos(i << 8)) + (nrm3 * IntSin(i << 8)));
+					for (int i = 0; i != arrow_sides; i++)
+					{
+						GL.Vertex3(arrow_start + (nrm2 * IntCos(i << arrow_shift)) + (nrm3 * IntSin(i << arrow_shift)));
+						GL.Normal3(-forward);
+					}
 					GL.End();
 				}
 			}
 			else
 			{
-				sc.X = IntCos(15 << 8);
-				sc.Y = IntSin(15 << 8);
+				sc.X = IntCos((arrow_sides-1) << arrow_shift);
+				sc.Y = IntSin((arrow_sides-1) << arrow_shift);
+				nm = (side0 * sc.X) + (side1 * sc.Y);
 				next_a = (nrm0 * sc.X) + (nrm1 * sc.Y);
 				next_b = next_a + arrow_start;
 				GL.Begin(PrimitiveType.TriangleStrip);
 				GL.Vertex3(next_b);
+				GL.Normal3(nm);
 				GL.Vertex3(next_a);
-				for (int i = 0; i != 16; ++i)
+				GL.Normal3(nm);
+				for (int i = 0; i != arrow_sides; ++i)
 				{
-					sc.X = IntCos(i << 8);
-					sc.Y = IntSin(i << 8);
+					sc.X = IntCos(i << arrow_shift);
+					sc.Y = IntSin(i << arrow_shift);
+					nm = (side0 * sc.X) + (side1 * sc.Y);
 					next_a = (nrm0 * sc.X) + (nrm1 * sc.Y);
 					next_b = next_a + arrow_start;
 					GL.Vertex3(next_b);
+					GL.Normal3(nm);
 					GL.Vertex3(next_a);
+					GL.Normal3(nm);
 				}
 				GL.End();
 				next_b = (nrm2 * sc.X) + (nrm3 * sc.Y);
@@ -101,22 +111,26 @@ namespace Quad64
 						//GL.Vertex3(next_b);
 						if (stem_radius > head_radius)
 						{
-							for (int i = 0; i <= 16; ++i)
+							for (int i = 0; i <= arrow_sides; ++i)
 							{
-								sc.X = IntCos(i << 8);
-								sc.Y = IntSin(i << 8);
+								sc.X = IntCos(i << arrow_shift);
+								sc.Y = IntSin(i << arrow_shift);
 								GL.Vertex3(arrow_start + (nrm0 * sc.X) + (nrm1 * sc.Y));
+								GL.Normal3(forward);
 								GL.Vertex3(arrow_start + (nrm2 * sc.X) + (nrm3 * sc.Y));
+								GL.Normal3(forward);
 							}
 						}
 						else
 						{
-							for (int i = 0; i <= 16; ++i)
+							for (int i = 0; i <= arrow_sides; ++i)
 							{
-								sc.X = IntCos(i << 8);
-								sc.Y = IntSin(i << 8);
+								sc.X = IntCos(i << arrow_shift);
+								sc.Y = IntSin(i << arrow_shift);
 								GL.Vertex3(arrow_start + (nrm2 * sc.X) + (nrm3 * sc.Y));
+								GL.Normal3(-forward);
 								GL.Vertex3(arrow_start + (nrm0 * sc.X) + (nrm1 * sc.Y));
+								GL.Normal3(-forward);
 							}
 
 						}
@@ -125,10 +139,11 @@ namespace Quad64
 					else
 					{
 						GL.Begin(PrimitiveType.TriangleFan);
-						for (int i = 0; i!= 16;++i)
+						for (int i = 0; i!= arrow_sides;++i)
 						{
-							GL.Vertex3(arrow_start + (nrm0 * IntCos(i << 8)) + (nrm1 * IntSin(i << 8)));
+							GL.Vertex3(arrow_start + (nrm0 * IntCos(i << arrow_shift)) + (nrm1 * IntSin(i << arrow_shift)));
 
+							GL.Normal3(forward);
 						}
 						GL.End();
 					}
@@ -136,8 +151,11 @@ namespace Quad64
 
 				// bottom cap.
 				GL.Begin(PrimitiveType.TriangleFan);
-				for (int i = 16; i != 0; --i)
-					GL.Vertex3((nrm0 * IntCos(i << 8)) + (nrm1 * IntSin(i << 8)));
+				for (int i = arrow_sides; i != 0; --i)
+				{
+					GL.Vertex3((nrm0 * IntCos(i << arrow_shift)) + (nrm1 * IntSin(i << arrow_shift)));
+					GL.Normal3(-forward);
+				}
 				GL.End();
 			}
 
@@ -145,8 +163,12 @@ namespace Quad64
 			{
 				GL.Begin(PrimitiveType.TriangleFan);
 				GL.Vertex3(head_point);
-				for (int i = 0; i <= 16; i++)
-					GL.Vertex3(arrow_start + (nrm2 * IntCos(i << 8)) + (nrm3 * IntSin(i << 8)));
+				GL.Normal3(forward);
+				for (int i = 0; i <= arrow_sides; i++)
+				{
+					GL.Vertex3(arrow_start + (nrm2 * IntCos(i << arrow_shift)) + (nrm3 * IntSin(i << arrow_shift)));
+					GL.Normal3((side0 * IntCos(i << arrow_shift)) + (side1* IntSin(i << arrow_shift)));
+				}
 				GL.End();
 			}
 		}

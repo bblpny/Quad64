@@ -16,6 +16,7 @@ namespace Quad64
 		private readonly Level parent;
 		public ROM rom => parent.rom;
 		public Level level => parent;
+		public TransformI[] startPoints = null;
 		public readonly Model3D AreaModel = new Model3D();
 		public readonly CollisionMap collision = new CollisionMap();
 

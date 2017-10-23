@@ -20,6 +20,10 @@ namespace Quad64
 		public TransformI Cursor = new TransformI { scale = { Whole = 1, }, };
 		public uint NumImmediate;
 		public uint switchFunc, switchCount, switchPos;
+#if DEBUG
+		public ushort JumpCall;
+		public string PipeString => 0 == JumpCall ? "| " : "|:";
+#endif
 		public bool callSwitch, isSwitch;
 		public uint NumDescendants
 		{
@@ -256,7 +260,7 @@ namespace Quad64
 		public readonly int IndexCount, IndicesByteSize;
 		public readonly byte IndexElementSize, DrawLayerMask;
 		public readonly Scripts.Material Material;
-		public GraphicsState State;
+		public GraphicsState State = GraphicsState.Default;
 		public GeoMesh Next;
 		public int VertexCount => VertexBuffer.Length >> 4;
 		private static void StoreVertex(byte[] Buffer, ref Vertex128 value, int Offset)
@@ -339,6 +343,14 @@ namespace Quad64
 			this.IndicesByteSize = 2 == IndexElementSize ? IndexCount << 1 : 4 == IndexElementSize ? IndexCount << 2 : IndexCount;
 			DrawLayerMask = (byte)(1 << (Material.drawLayerBillboard & 7));
 		}
+		static void BindLight(Light Light, ref GraphicsLight Graphics)
+		{
+			Graphics.Color = (Color4b)Light.Color;
+			Graphics.Normal = Light.Normal;
+			Graphics.Normal.W = 0;
+			Graphics.Color.A = 255;
+		}
+
 		internal byte BindGL(GeoMesh prev, ref GeoMesh @this)
 		{
 			if (this.VertexCount != 0)
@@ -382,8 +394,71 @@ namespace Quad64
 						IndexElementSize == 4 ? IndexInteger.Int :
 						IndexElementSize == 2 ? IndexInteger.Short :
 						IndexInteger.Byte;
-				State.LightMode = Material.Smooth ? LightMode.Smooth : LightMode.Hard;
 
+				State.LightMode = Material.Smooth ? LightMode.Smooth0 : LightMode.Hard0;
+				switch (Material.numLight)
+				{
+					case 0:
+						State.Ambient = (Color4b)Material.light.Lights0.Ambient.Color;
+						break;
+					case 1:
+						BindLight(Material.light.Lights1.Light1, ref State.Light1);
+						State.Ambient = (Color4b)Material.light.Lights1.Ambient.Color;
+						State.LightMode |= LightMode.Hard1;
+						break;
+					case 2:
+						BindLight(Material.light.Lights2.Light1, ref State.Light1);
+						BindLight(Material.light.Lights2.Light2, ref State.Light2);
+						State.Ambient = (Color4b)Material.light.Lights2.Ambient.Color;
+						State.LightMode |= LightMode.Hard2;
+						break;
+					case 3:
+						BindLight(Material.light.Lights3.Light1, ref State.Light1);
+						BindLight(Material.light.Lights3.Light2, ref State.Light2);
+						BindLight(Material.light.Lights3.Light3, ref State.Light3);
+						State.Ambient = (Color4b)Material.light.Lights3.Ambient.Color;
+						State.LightMode |= LightMode.Hard3;
+						break;
+					case 4:
+						BindLight(Material.light.Lights4.Light1, ref State.Light1);
+						BindLight(Material.light.Lights4.Light2, ref State.Light2);
+						BindLight(Material.light.Lights4.Light3, ref State.Light3);
+						BindLight(Material.light.Lights4.Light4, ref State.Light4);
+						State.Ambient = (Color4b)Material.light.Lights4.Ambient.Color;
+						State.LightMode |= LightMode.Hard4;
+						break;
+					case 5:
+						BindLight(Material.light.Lights5.Light1, ref State.Light1);
+						BindLight(Material.light.Lights5.Light2, ref State.Light2);
+						BindLight(Material.light.Lights5.Light3, ref State.Light3);
+						BindLight(Material.light.Lights5.Light4, ref State.Light4);
+						BindLight(Material.light.Lights5.Light5, ref State.Light5);
+						State.Ambient = (Color4b)Material.light.Lights5.Ambient.Color;
+						State.LightMode |= LightMode.Hard5;
+						break;
+					case 6:
+						BindLight(Material.light.Lights6.Light1, ref State.Light1);
+						BindLight(Material.light.Lights6.Light2, ref State.Light2);
+						BindLight(Material.light.Lights6.Light3, ref State.Light3);
+						BindLight(Material.light.Lights6.Light4, ref State.Light4);
+						BindLight(Material.light.Lights6.Light5, ref State.Light5);
+						BindLight(Material.light.Lights6.Light6, ref State.Light6);
+						State.Ambient = (Color4b)Material.light.Lights6.Ambient.Color;
+						State.LightMode |= LightMode.Hard6;
+						break;
+					default:
+						BindLight(Material.light.Lights7.Light1, ref State.Light1);
+						BindLight(Material.light.Lights7.Light2, ref State.Light2);
+						BindLight(Material.light.Lights7.Light3, ref State.Light3);
+						BindLight(Material.light.Lights7.Light4, ref State.Light4);
+						BindLight(Material.light.Lights7.Light5, ref State.Light5);
+						BindLight(Material.light.Lights7.Light6, ref State.Light6);
+						BindLight(Material.light.Lights7.Light7, ref State.Light7);
+						State.Ambient = (Color4b)Material.light.Lights7.Ambient.Color;
+						State.LightMode |= LightMode.Hard7;
+						break;
+				};
+				State.Ambient.A = 255;
 				State.ElementMask = (Material.HasVertexColors ?
 					ElementMask.Color : ElementMask.Normal) |
 					(Material.HasTexture ?
@@ -421,16 +496,18 @@ namespace Quad64
 					State.Texture = texture.GetLoadedHandle();
 					State.ElementMask |= ElementMask.Texture;
 				}
-				State.Fog = Material.fogColor;
-				State.FogMultiplier = Material.fogOffset;
-				State.FogOffset = Material.fogMultiplier; 
+				State.Fog = (Color4b)Material.fogColor;
+				State.FogMultiplier = Material.fogMultiplier;
+				State.FogOffset = Material.fogOffset; 
 				State.FeatureMask = (FeatureMask)(Material.drawLayerBillboard & 7) |
 					(this.Parent.Parent.ZTest ? FeatureMask.ZTest : (FeatureMask)0) |
 					(Material.IsLit ? FeatureMask.Lit : (FeatureMask)0) |
 					(Material.Fog ? FeatureMask.Fog : (FeatureMask)0);
-				State.Color = Material.lightColor;
-				State.LightColor = Material.lightColor;
-				State.DarkColor = Material.darkColor;
+				State.Color.Value = uint.MaxValue;
+				//State.Color.Diffuse
+				//State.Color = Material.lightColor;
+				//State.Diffuse = Material.lightColor;
+				//State.Ambient = Material.darkColor;
 				State.VertexColor = VertexColor.Smooth;
 				State.Culling = Material.CullBack ? Material.CullFront ? Culling.Both : Culling.Back : Material.CullFront ? Culling.Front : Culling.Off;
 

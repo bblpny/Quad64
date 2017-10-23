@@ -30,9 +30,13 @@ namespace Quad64.Scripts
 			Level ILevelProperty.Level => lvl;
 			public GeoParent currentParent => (GeoParent)nodeCurrent ?? rootNode;
 			public GeoNode nodeCurrent;
+#if !NO_GEO_MAT
+			public Material material;
+#endif
 
 #if DEBUG
 			public readonly ushort[] counter;
+			public System.Text.StringBuilder log;
 #endif
 			public Persistant persistant=Persistant.reset;
 			public bool _zbuf=true;
@@ -57,13 +61,13 @@ namespace Quad64.Scripts
 					return node;
 				}
 			}
-
 			public Runtime(
 				Level level,
 				Model3D mdl,
 				GeoRoot root
 #if DEBUG
 				, ushort[] counter=null
+				, System.Text.StringBuilder log=null
 #endif
 				) : base(Instance, level.rom)
 			{
@@ -77,6 +81,7 @@ namespace Quad64.Scripts
 				this.nodeCurrent = null;
 #if DEBUG
 				this.counter = counter ?? new ushort[259];
+				this.log = log ?? new System.Text.StringBuilder();
 #endif
 			}
 			public Runtime(Runtime copy)
@@ -88,8 +93,12 @@ namespace Quad64.Scripts
 				this.nodeCurrent = copy.nodeCurrent;
 				this._zbuf = copy._zbuf;
 				this.persistant = copy.persistant;
+#if !NO_GEO_MAT
+				this.material = copy.material;
+#endif
 #if DEBUG
 				this.counter = copy.counter;
+				this.log = copy.log;
 #endif
 			}
 			public Runtime(Runtime copy, SegmentOffset segOff) : this(copy)
@@ -100,11 +109,30 @@ namespace Quad64.Scripts
 				Runtime rt,
 				Runtime originator)
 			{
+#if DEBUG
+				var jmp = rt.currentParent;
+				var indent = jmp is GeoNode ? (new string(' ', (int)(((GeoNode)jmp).Depth + 2u) << 1)) : "  ";
+				jmp.JumpCall++;
+				rt.log.AppendLine(indent + ";=Beg ("+jmp.JumpCall+")");
+#endif
 				Evaluate(rt);
+#if DEBUG
+				if (rt.currentParent != jmp)
+					if (rt.nodeCurrent == null ? (jmp is GeoNode) : (!(jmp is GeoNode) || ((GeoNode)jmp).Depth != rt.nodeCurrent.Depth))
+						rt.log.AppendLine(indent + "^-End (Different And Depth Mismatch," + jmp.JumpCall + ")");
+					else
+						rt.log.AppendLine(indent + "^-End (Different," + jmp.JumpCall + ")");
+				else
+					rt.log.AppendLine(indent + "\\=End (" + jmp.JumpCall + ")");
+				jmp.JumpCall--;
+#endif
 
 				originator.nodeCurrent = rt.nodeCurrent;
 				originator._zbuf = rt._zbuf;
 				originator.persistant = rt.persistant;
+#if !NO_GEO_MAT
+				originator.material = rt.material;
+#endif
 			}
 			
 
@@ -112,35 +140,62 @@ namespace Quad64.Scripts
 		public static GeoRoot Parse(
 			Model3D mdl,
 			Level lvl,
+#if !NO_LEVEL_MAT
+			ref Material material,
+#endif
 			SegmentOffset segOff)
         {
-#if DEBUG
-			System.Console.WriteLine("Start parse");
-#endif
 			var root = new GeoRoot(mdl);
-			var rt = new Runtime(lvl, mdl, root);
+			var rt = new Runtime(lvl, mdl, root)
+#if !NO_GEO_MAT && !NO_LEVEL_MAT
+			{ material = material, }
+#elif !NO_GEO_MAT
+			{ material = Material.Default, }
+#endif
+				;
 
 			Runtime.SetSegment(rt, segOff);
 			root.Code = Runtime.Evaluate(rt);
 			var endingNode = rt.nodeCurrent;
 #if DEBUG
-			System.Console.WriteLine("End parse:"+(null==endingNode?"null":endingNode.Depth.ToString()));
+			rt.log.AppendLine("End parse:"+(null==endingNode?"null":endingNode.Depth.ToString()));
 
 			{
 				for (int i = 0; i < 256; i++)
 					if (rt.counter[i] != 0)
-						System.Console.WriteLine(i.ToString("X2") + ":" + rt.counter[i]);
-				System.Console.WriteLine(rt.counter[256]+ "("+rt.counter[257]+"+"+rt.counter[258]+")");
+						rt.log.AppendLine(i.ToString("X2") + ":" + rt.counter[i]);
+				rt.log.AppendLine(rt.counter[256].ToString());
 			}
 #endif
 			root.Bind();
+#if !NO_GEO_MAT
+			material = rt.material;
+#endif
+#if DEBUG
+			if (rt.nodeCurrent != null)
+			{
+				rt.log.AppendLine("!+" + (1u + rt.nodeCurrent.Depth));
+				System.Console.WriteLine(rt.log);
+			}
+			else if (rt.counter[256] != 0)
+			{
+				System.Console.WriteLine(rt.log);
+			}
+#endif
 
 			return mdl.root=root;
 		}
 		public static GeoRoot Parse(Area area,
+#if !NO_LEVEL_MAT
+			ref Material material,
+#endif
 			SegmentOffset segOff)
 		{
-			return Parse(area.AreaModel, area.level, segOff);
+			return Parse(area.AreaModel, area.level,
+#if !NO_LEVEL_MAT
+				ref material,
+#endif
+				segOff);
 		}
 		// always takes over.
 		protected sealed override bool RunCommand(Script.Runtime _rt, CommandInfo info, ref ByteSegment cmd)
@@ -149,42 +204,52 @@ namespace Quad64.Scripts
 			GeoParent switcher;
 #if DEBUG
 			rt.counter[cmd[0]]++;
-			int put_pos = 0;
-			if (null != (object)rt.nodeCurrent)
-				for (; put_pos <= rt.nodeCurrent.Depth; ++put_pos)
-					System.Console.Write("| ");
-			if (cmd[0] == 0x05)
-				System.Console.Write("\'-");
-			else if (cmd[0] == 0x04)
-				System.Console.Write("+-");
+			int put_pos = 1;
+			if (rt.rootNode.JumpCall == 0)
+				rt.log.Append(" >");
 			else
-				System.Console.Write("|-");
+				rt.log.Append(">>");
+			if (null != (object)rt.nodeCurrent)
+			{
+				for (uint depth = rt.nodeCurrent.Depth; depth != 0; --depth)
+				{
+					switcher = rt.nodeCurrent;
+					for (uint back = depth; back != 0; --back)
+						switcher = ((GeoNode)switcher).Outer;
+					rt.log.Append(0 == switcher.JumpCall ? "| ":"|>");
+				}
+
+				rt.log.Append(0 == rt.nodeCurrent.JumpCall ? "| " : "|:");
+
+				put_pos += 1+(int)rt.nodeCurrent.Depth;
+			}
+			if (cmd[0] == 0x05)
+				rt.log.Append('\'');
+			else if (cmd[0] == 0x04)
+				rt.log.Append('+');
+			else
+				rt.log.Append('|');
+			if (rt.currentParent.JumpCall == 0)
+				rt.log.Append('-');
+			else
+				rt.log.Append('~');
 			put_pos++;
 			put_pos <<= 1;
 
-			System.Console.Write(bytesToUInt16(cmd).ToString("X4"));
+			rt.log.Append(bytesToUInt16(cmd).ToString("X4"));
 			//System.Console.Write('+');
 			//System.Console.Write(cmd.Length.ToString("00"));
 			put_pos += 4;
-			while (put_pos++ < 40) System.Console.Write(' ');
-			// Nintendo is very smart about selecting values with meaning.
-			// this should help decipher whats going on.
-			if (0 != (cmd[0] & 1)) { System.Console.Write('A'); put_pos++; }
-			if (0 != (cmd[0] & 2)) { System.Console.Write('B'); put_pos++; }
-			if (0 != (cmd[0] & 4)) { System.Console.Write('C'); put_pos++; }
-			if (0 != (cmd[0] & 8)) { System.Console.Write('D'); put_pos++; }
-			if (0 != (cmd[0] & 16)) { System.Console.Write('E'); put_pos++; }
-			if (0 != (cmd[0] & 32)) { System.Console.Write('F'); put_pos++; }
-			if (0 != (cmd[0] & 64)) { System.Console.Write('G'); put_pos++; }
-			if (0 != (cmd[0] & 128)) { System.Console.Write('H'); put_pos++; }
-			while (put_pos++ < 49) System.Console.Write(' ');
+			while (put_pos++ < 40)
+				rt.log.Append(' ');
 
 			for (int b = 2; b < cmd.Length; b++)
 			{
-				if (b != 2) System.Console.Write(' ');
-				System.Console.Write(cmd[b].ToString("X2"));
+				if (b != 2)
+					rt.log.Append(' ');
+				rt.log.Append(cmd[b].ToString("X2"));
 			}
-			System.Console.WriteLine();
+			rt.log.AppendLine();
 #endif
 			if (cmd[0] != 0x05 && 
 				(switcher = rt.currentParent).isSwitch &&
@@ -227,7 +292,10 @@ namespace Quad64.Scripts
 																 /*
 																 end = true;
 																 code = 0x00;*/
-																 
+				EvaluateCopyState(new Runtime(rt, bytesToSegmentOffset(cmd, 4)), rt);
+
+
+
 
 			}
 			static public void CMD_01(Runtime rt, ref ByteSegment cmd)
@@ -246,8 +314,9 @@ namespace Quad64.Scripts
 					var jump = new Runtime(rt, bytesToSegmentOffset(cmd, 4));
 					EvaluateCopyState(jump, rt);
 
-					if (jump.returnCode != 0x03)
-						Exit(rt, rt.returnCode);
+					//branch or non 0x03 return.
+					if (cmd[1] == 0 || jump.returnCode != 0x03)
+						Exit(rt, jump.returnCode);
 				}
 			}
 			static public void CMD_04(Runtime rt, ref ByteSegment cmd)
@@ -270,7 +339,7 @@ namespace Quad64.Scripts
 				if (null == (object)rt.nodeCurrent)
 				{
 #if DEBUG
-					System.Console.WriteLine("Smashed Bottom");
+					rt.log.AppendLine("<{-");
 					rt.counter[256]++;
 #endif
 				}
@@ -333,6 +402,9 @@ namespace Quad64.Scripts
 					Fast3DScripts.Parse(
 						rt.mdl,
 						rt.lvl,
+#if !NO_GEO_MAT
+						ref rt.material,
+#endif
 						segOff,
 						overrideDrawLayer:drawLayer);
 
@@ -423,6 +495,7 @@ namespace Quad64.Scripts
 			{
 				CMD_04(rt, ref cmd);
 				rt.nodeCurrent.ramAddress = bytesToUInt32(cmd, 8);
+				//CMD_05(rt, ref cmd);
 			}
 
 			static public unsafe void CMD_1D(Runtime rt, ref ByteSegment cmd)

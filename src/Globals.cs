@@ -25,7 +25,7 @@ namespace Quad64
         public static bool drawObjectModels = true;
         public static bool renderCollisionMap = false;
         public static bool doBackfaceCulling = false;
-
+		public static bool showCameraAxes = false;
         // Editor Options
         public static bool autoLoadROMOnStartup = false;
         public static string pathToAutoLoadROM = "";
@@ -43,6 +43,21 @@ namespace Quad64
         // TreeView selection
         public static int list_selected = -1;
         public static int item_selected = -1;
+
+		public static Object3D GetGlobalSelection(this Level level)
+		{
+			Area area;
+
+			if (list_selected < 0 || list_selected > 2 || item_selected < 0 || null == (object)level ||
+				null == (area = level.getCurrentArea()))
+				return null;
+
+			var List = list_selected == 0 ? area.Objects : list_selected == 1 ? area.MacroObjects : area.SpecialObjects;
+			if (null == (object)List || item_selected >= List.Count)
+				return null;
+
+			return List[item_selected];
+		}
 
         // Keeps track if the user needs to save their changes.
         public static bool needToSave = false;

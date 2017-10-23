@@ -1,0 +1,470 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ output extension=".cs" #>
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+namespace Quad64 {
+<#
+ColorType[] ColorTypes = {
+	new ColorType{ Name = "Color4b", Hint="ARGB", A=3,R=2,G=1,B=0,},
+	new ColorType{ Name = "Color4a", Hint="RGBA", A=0,R=3,G=2,B=1,},
+};
+for(int Space=0;Space<2;Space++){
+	var Color = ColorTypes[Space];
+	var Type=Color.Name;
+	#>
+	//<#=Color.Hint#>.
+	[StructLayout(LayoutKind.Explicit, Size = sizeof(uint))]
+	public partial struct <#=Type#> : IEquatable<<#=Type#>> <#for(int i =0;i<ColorTypes.Length;i++)if(i!=Space){#>, IEquatable<<#=ColorTypes[i].Name#>><#}#>, IEquatable<uint>
+	{
+		[FieldOffset(<#=Color.A#>)]
+		public byte A;
+		[FieldOffset(<#=Color.R#>)]
+		public byte R;
+		[FieldOffset(<#=Color.G#>)]
+		public byte G;
+		[FieldOffset(<#=Color.B#>)]
+		public byte B;
+		[FieldOffset(0)]
+		public uint Value;
+
+		public <#=Type#> InverseAlpha => new <#=Type#> { R = R, G = G, B = B, A = (byte)((byte)255 - A), };
+		public static <#=Type#> Black => new <#=Type#> { A = 255, };
+		public static <#=Type#> White => new <#=Type#> { Value = uint.MaxValue, };
+		public static <#=Type#> Red => new <#=Type#> { A = 255, R = 255, };
+		public static <#=Type#> Green => new <#=Type#> { A = 255, G = 255, };
+		public static <#=Type#> Blue => new <#=Type#> { A = 255, B = 255, };
+		public static <#=Type#> Magenta => new <#=Type#> { A = 255, B = 255, R=255, };
+		public static <#=Type#> Yellow => new <#=Type#> { A = 255, R = 255, G = 255, };
+		public static <#=Type#> Cyan => new <#=Type#> { A = 255, G = 255, B = 255, };
+		public static <#=Type#> ClearBlack => default(<#=Type#>);
+		public static <#=Type#> ClearWhite => new <#=Type#> { R = 255, G = 255, B = 255, };
+		public static <#=Type#> ClearRed => new <#=Type#> { R = 255, };
+		public static <#=Type#> ClearGreen => new <#=Type#> {  G = 255, };
+		public static <#=Type#> ClearBlue => new <#=Type#> { B = 255, };
+		public static <#=Type#> ClearMagenta => new <#=Type#> { B = 255, R = 255, };
+		public static <#=Type#> ClearYellow => new <#=Type#> {  R = 255, G = 255, };
+		public static <#=Type#> ClearCyan => new <#=Type#> { G = 255, B = 255, };
+
+
+		// these are GL defaults.. https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/glMaterial.xml
+		public static <#=Type#> Default_Ambient => new <#=Type#> { R = 51, G = 51, B = 51, A = 255, };
+		// 0.8 * 255 = 204
+		public static <#=Type#> Default_Diffuse => new <#=Type#> { R = 204, G = 204, B = 204, A = 255, };
+		public static <#=Type#> Default_Specular => new <#=Type#> { A = 255, };
+		public static <#=Type#> Default_Emission => new <#=Type#> { A = 255, };
+		public static <#=Type#> U64_Ambient => new <#=Type#> { R = 204, G = 204, B = 204, };
+		public static <#=Type#> U64_Diffuse => new <#=Type#> {  };
+		
+		public float a { get => ByteUtility.b2f[A]; set => A = ByteUtility.FloatToChannel(value); }
+		public float r { get => ByteUtility.b2f[R]; set => R = ByteUtility.FloatToChannel(value); }
+		public float g { get => ByteUtility.b2f[G]; set => G = ByteUtility.FloatToChannel(value); }
+		public float b { get => ByteUtility.b2f[B]; set => B = ByteUtility.FloatToChannel(value); }
+		public float F(int channel) { return ByteUtility.b2f[this[channel]]; }
+		public void F(int channel, float value) { this[channel] = ByteUtility.FloatToChannel(value); }
+
+		public void GL_Load() { OpenTK.Graphics.OpenGL.GL.Color4(R, G, B, A); }
+		public void GL_Load3() { OpenTK.Graphics.OpenGL.GL.Color3(R, G, B); }
+
+		public static explicit operator OpenTK.Graphics.Color4(<#=Type#> criteria)
+		{
+			return new OpenTK.Graphics.Color4(criteria.R, criteria.G, criteria.B, criteria.A);
+		}
+
+		public unsafe void GL_LoadMaterial(
+			OpenTK.Graphics.OpenGL.MaterialFace MaterialFace = OpenTK.Graphics.OpenGL.MaterialFace.FrontAndBack,
+			OpenTK.Graphics.OpenGL.MaterialParameter MaterialParameter = OpenTK.Graphics.OpenGL.MaterialParameter.Diffuse)
+		{
+			float* f = stackalloc float[4];
+			f[0] = ByteUtility.b2f[R];
+			f[1] = ByteUtility.b2f[G];
+			f[2] = ByteUtility.b2f[B];
+			f[3] = ByteUtility.b2f[A];
+			OpenTK.Graphics.OpenGL.GL.Material(MaterialFace, MaterialParameter, f);
+		}
+
+		unsafe public void GL_LoadFogColor()
+		{
+			float* f = stackalloc float[4];
+			f[0] = ByteUtility.b2f[R];
+			f[1] = ByteUtility.b2f[G];
+			f[2] = ByteUtility.b2f[B];
+			f[3] = ByteUtility.b2f[A];
+			OpenTK.Graphics.OpenGL.GL.Fog(
+				OpenTK.Graphics.OpenGL.FogParameter.FogColor,
+				f);
+		}
+		/// <summary>
+		/// this is a bit standard but nonstandard too.
+		/// 0 = R, 1 = G, 2 = B, 3 = A.
+		/// </summary>
+		/// <param name="channel"> 0 = R, 1 = G, 2 = B, 3 = A.</param>
+		public byte this[int channel] {
+			get => 0 == (channel & 2) ? 0 == (channel & 1) ? R : G : 0 == (channel & 1) ? B : A;
+			set { if (0 == (channel & 2)) if (0 == (channel & 1)) R = value; else G = value; else if (0 == (channel & 1)) B = value; else A = value; }
+		}
+		public bool Equals(<#=Type#> other) { return Value == other.Value; }
+		public bool Equals(uint other) { return Value == other; }
+		public <#=Type#>(byte R, byte G, byte B, byte A=255)
+		{
+			Value = 0;
+			this.A = A;
+			this.R = R;
+			this.G = G;
+			this.B = B;
+		}
+		/// <summary>
+		/// hue is in degrees.
+		/// </summary>
+		public static <#=Type#> HSV(double Hue, double Saturation, double Value, byte Alpha=255)
+		{
+			if (Value > 1.0) Value = 1.0;
+			else if (!(Value > 0.0)) Value = 0.0;
+
+			if (Saturation > 1.0) Saturation = 1.0;
+			else if (!(Saturation > 0.0)) Saturation = 0.0;
+
+			double Chroma = Value * Saturation;
+
+			if (!(Hue <= double.MaxValue && Hue >= -double.MaxValue))
+				return new <#=Type#> { A = Alpha, };
+			else
+			{
+				if (Hue >= 360.0 || Hue < 0.0) Hue = Hue % 360.0;
+				if (Hue < 0.0) Hue += 360.0;
+				if (Hue >= 360.0) Hue -= 360.0;
+			}
+			Hue = Hue / 60;
+			if (Hue >= 6.0) Hue -= 6;
+			double X = ((Hue % 2d) - 1);
+			if (X < 0.0) X = -X;
+			X=Chroma * (1-X);
+			double m = Value - Chroma;
+			Chroma += m;
+			X += m;
+
+			if(Hue <= 3.0)
+			{
+				if(1.0<= Hue)
+				{
+					if (2.0 <= Hue)
+					{
+						return new <#=Type#> { A = Alpha, r = (float)m, g = (float)Chroma, b = (float)X, };
+					}
+					else
+					{
+						return new <#=Type#> { A = Alpha, r = (float)X, g = (float)Chroma, b = (float)m, };
+					}
+				}
+				else
+				{
+					return new <#=Type#> { A = Alpha, r = (float)Chroma, g = (float)X, b = (float)m, };
+				}
+			}
+			else
+			{
+				if (4.0 <= Hue)
+				{
+					if (5.0 <= Hue)
+					{
+						return new <#=Type#> { A = Alpha, r = (float)Chroma, g = (float)m, b = (float)X, };
+					}
+					else
+					{
+						return new <#=Type#> { A = Alpha, r = (float)X, g = (float)m, b = (float)Chroma, };
+					}
+				}
+				else
+				{
+					return new <#=Type#> { A = Alpha, r = (float)m, g = (float)X, b = (float)Chroma, };
+				}
+			}
+		}
+		public ushort Index => (ushort)((ushort)(G << 8) | R);
+		public byte List => B;
+		public <#=Type#>(ushort Index, byte List) : this((byte)(Index & 255), (byte)(Index >> 8), List) { }
+		public <#=Type#>(uint ARGB)
+		{
+			A = R = B = G = 0;
+			Value = ARGB;
+		}
+		public static explicit operator <#=Type#>(uint ARGB) { return new <#=Type#> { Value = ARGB, }; }
+		public static explicit operator uint(<#=Type#> criteria) { return criteria.Value; }
+		public static explicit operator int(<#=Type#> criteria) { return unchecked((int)criteria.Value); }
+		public static bool operator ==(<#=Type#> L, <#=Type#> R) { return L.Value == R.Value; }
+		public static bool operator !=(<#=Type#> L, <#=Type#> R) { return L.Value != R.Value; }
+		public static bool operator ==(<#=Type#> L, uint R) { return L.Value == R; }
+		public static bool operator !=(<#=Type#> L, uint R) { return L.Value != R; }
+		public static bool operator ==(uint L, <#=Type#> R) { return L == R.Value; }
+		public static bool operator !=(uint L, <#=Type#> R) { return L != R.Value; }
+
+		public static <#=Type#> operator |(<#=Type#> L, <#=Type#> R) { return new <#=Type#> { Value = L.Value | R.Value, }; }
+		public static <#=Type#> operator &(<#=Type#> L, <#=Type#> R) { return new <#=Type#> { Value = L.Value & R.Value, }; }
+		public static <#=Type#> operator ^(<#=Type#> L, <#=Type#> R) { return new <#=Type#> { Value = L.Value ^ R.Value, }; }
+		public static <#=Type#> operator |(<#=Type#> L, uint R) { return new <#=Type#> { Value = L.Value | R, }; }
+		public static <#=Type#> operator &(<#=Type#> L, uint R) { return new <#=Type#> { Value = L.Value & R, }; }
+		public static <#=Type#> operator ^(<#=Type#> L, uint R) { return new <#=Type#> { Value = L.Value ^ R, }; }
+		public static <#=Type#> operator |(uint L, <#=Type#> R) { return new <#=Type#> { Value = L | R.Value, }; }
+		public static <#=Type#> operator &(uint L, <#=Type#> R) { return new <#=Type#> { Value = L & R.Value, }; }
+		public static <#=Type#> operator ^(uint L, <#=Type#> R) { return new <#=Type#> { Value = L ^ R.Value, }; }
+		public static <#=Type#> operator ~(<#=Type#> criteria) { return new <#=Type#> { Value = ~criteria.Value, }; }
+		public static <#=Type#> operator -(<#=Type#> criteria) { return new <#=Type#> { R = (byte)(255 - criteria.R), G = (byte)(255 - criteria.G), B = (byte)(255 - criteria.B), A = (byte)(255 - criteria.A), }; }
+		public static <#=Type#> operator +(<#=Type#> criteria) { return new <#=Type#> { R = criteria.R, G = criteria.G, B = criteria.B, A = 255, }; }
+		public static bool operator true(<#=Type#> L) { return L.A != 0; }
+		public static bool operator false(<#=Type#> L) { return L.A == 0; }
+
+		public static byte ByteClampSum(byte L, byte R)
+		{
+			ushort V = (ushort)(L + R);
+			return (V == (V & 255)) ? (byte)V : (byte)255;
+		}
+		public static byte ByteClampSub(byte L, byte R)
+		{
+			return R >= L ? (byte)0 : (byte)(L - R);
+		}
+		public static <#=Type#> operator +(<#=Type#> L, <#=Type#> R)
+		{
+			unchecked
+			{
+				return new <#=Type#>
+				{
+					A = ByteClampSum(L.A , R.A),
+					R = ByteClampSum(L.R , R.R),
+					G = ByteClampSum(L.G , R.G),
+					B = ByteClampSum(L.B , R.B),
+				};
+			}
+		}
+		public static <#=Type#> operator -(<#=Type#> L, <#=Type#> R)
+		{
+			unchecked
+			{
+				return new <#=Type#>
+				{
+					A = ByteClampSub(L.A, R.A),
+					R = ByteClampSub(L.R, R.R),
+					G = ByteClampSub(L.G, R.G),
+					B = ByteClampSub(L.B, R.B),
+				};
+			}
+		}
+		public static byte ByteMul(byte L, byte R)
+		{
+			ushort V = (ushort)((ushort)L * (ushort)R);
+			return (byte)((V >> 8) + (0 == (V & 255) ? 0 : 1));
+		}
+		public static <#=Type#> operator *(<#=Type#> L, <#=Type#> R)
+		{
+			unchecked
+			{
+				return new <#=Type#>
+				{
+					A = ByteMul(L.A , R.A),
+					R = ByteMul(L.R , R.R),
+					G = ByteMul(L.G , R.G),
+					B = ByteMul(L.B , R.B),
+				};
+			}
+		}
+		public static byte ByteDiv(byte L, byte R)
+		{
+			ushort v;
+			return R == 0 ? (byte)255 : ((v = (ushort)((ushort)L << 8 / R)) & 255) == v ? (byte)v : (byte)255;
+		}
+		public static <#=Type#> operator /(<#=Type#> L, <#=Type#> R)
+		{
+			unchecked
+			{
+				return new <#=Type#>
+				{
+					A = ByteDiv(L.A, R.A),
+					R = ByteDiv(L.R, R.R),
+					G = ByteDiv(L.G, R.G),
+					B = ByteDiv(L.B, R.B),
+				};
+			}
+		}
+		public static byte ByteBlend(byte L, byte R, byte A)
+		{
+			return (L < R)?(byte)(L + ByteMul((byte)(R - L), A)):(L > R)?(byte)(R + ByteMul((byte)(L - R), (byte)(255 - A))):L;
+		}
+		public static <#=Type#> AlphaBlendSrc(<#=Type#> Src, <#=Type#> Dst)
+		{
+			return new <#=Type#>
+			{
+				A = ByteBlend(Src.A, Dst.A, Src.A),
+				R = ByteBlend(Src.R, Dst.R, Src.A),
+				G = ByteBlend(Src.G, Dst.G, Src.A),
+				B = ByteBlend(Src.B, Dst.B, Src.A),
+			};
+		}
+		public static <#=Type#> AlphaBlendDst(<#=Type#> Src, <#=Type#> Dst)
+		{
+			return new <#=Type#>
+			{
+				A = ByteBlend(Src.A, Dst.A, Dst.A),
+				R = ByteBlend(Src.R, Dst.R, Dst.A),
+				G = ByteBlend(Src.G, Dst.G, Dst.A),
+				B = ByteBlend(Src.B, Dst.B, Dst.A),
+			};
+		}
+		public static <#=Type#> AlphaBlend(<#=Type#> Src, <#=Type#> Dst, byte Alpha)
+		{
+			return new <#=Type#>
+			{
+				A = ByteBlend(Src.A, Dst.A, Alpha),
+				R = ByteBlend(Src.R, Dst.R, Alpha),
+				G = ByteBlend(Src.G, Dst.G, Alpha),
+				B = ByteBlend(Src.B, Dst.B, Alpha),
+			};
+		}
+
+
+		public override int GetHashCode()
+		{
+<#if(Color.A==3){#>
+			return Value.GetHashCode();
+<#}else{#>
+			return ((Value>>8)|(Value<<24)).GetHashCode();
+<#}#>
+		}
+		///<summary>this prints a hex string of ARGB</summary>
+		unsafe public override string ToString()
+		{
+			byte* buf = stackalloc byte[12];
+			buf[0] = (byte)'0';
+			buf[1] = (byte)'x';
+			buf[2] = (byte)(A >> 4);
+			buf[3] = (byte)(A & 15);
+			buf[4] = (byte)(R >> 4);
+			buf[5] = (byte)(R & 15);
+			buf[6] = (byte)(G >> 4);
+			buf[7] = (byte)(G & 15);
+			buf[8] = (byte)(B >> 4);
+			buf[9] = (byte)(B & 15);
+			buf[10] = 0;
+			for (int i = 9; i > 1; i--) if (buf[i] < 10) buf[i] += (byte)'0'; else buf[i] += (byte)('A' - 10);
+			return new string((sbyte*)buf, 0, 10);
+		}
+		public override bool Equals(object obj)
+		{
+			return obj is <#=Type#> ? 
+				Value == ((<#=Type#>)obj).Value :
+				obj is <#=ColorTypes[(Space+1)&1].Name#> ? Equals((<#=ColorTypes[(Space+1)&1].Name#>)obj) :
+				Value.Equals(obj);
+		}
+		public static explicit operator <#=Type#>(OpenTK.Vector3 f)
+		{
+			return new <#=Type#>
+			{
+				R = ByteUtility.FloatToChannel(f.X),
+				G = ByteUtility.FloatToChannel(f.Y),
+				B = ByteUtility.FloatToChannel(f.Z),
+				A = 255,
+			};
+		}
+		public static explicit operator <#=Type#>(OpenTK.Vector4 f)
+		{
+			return new <#=Type#>
+			{
+				R = ByteUtility.FloatToChannel(f.X),
+				G = ByteUtility.FloatToChannel(f.Y),
+				B = ByteUtility.FloatToChannel(f.Z),
+				A = ByteUtility.FloatToChannel(f.W),
+			};
+		}
+		public static explicit operator OpenTK.Vector3(<#=Type#> criteria) { return new OpenTK.Vector3 { X = criteria.r, Y = criteria.g, Z = criteria.b, }; }
+		public static explicit operator OpenTK.Vector4(<#=Type#> criteria) { return new OpenTK.Vector4 { X = criteria.r, Y = criteria.g, Z = criteria.b, W = criteria.a, }; }
+		public static implicit operator <#=Type#>(System.Drawing.Color color)
+		{
+			var o = new <#=Type#> { R = color.R, G = color.G, B = color.B, A = color.A, };
+			//if (o.Value != unchecked((uint)color.ToArgb())) throw new InvalidOperationException();
+			return o;
+		}
+		public static explicit operator System.Drawing.Color(<#=Type#> color)
+		{
+			return System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B);
+		}
+		public unsafe void GL_LoadLight(
+			OpenTK.Graphics.OpenGL.LightParameter LightParameter,
+			OpenTK.Graphics.OpenGL.LightName LightName)
+		{
+			float* f = stackalloc float[4];
+			f[0] = ByteUtility.b2f[R];
+			f[1] = ByteUtility.b2f[G];
+			f[2] = ByteUtility.b2f[B];
+			f[3] = ByteUtility.b2f[A];
+			OpenTK.Graphics.OpenGL.GL.Light(
+				LightName,
+				LightParameter,
+				f);
+
+		}
+		public unsafe void GL_LoadLightModel(
+			OpenTK.Graphics.OpenGL.LightModelParameter LightModelParameter)
+		{
+			float* f = stackalloc float[4];
+			f[0] = ByteUtility.b2f[R];
+			f[1] = ByteUtility.b2f[G];
+			f[2] = ByteUtility.b2f[B];
+			f[3] = ByteUtility.b2f[A];
+			OpenTK.Graphics.OpenGL.GL.LightModel(
+				LightModelParameter,
+				f);
+
+		}
+		public unsafe void GL_LoadLight(
+			OpenTK.Graphics.OpenGL.LightParameter LightParameter,
+			byte Mask)
+		{
+			float* f = stackalloc float[4];
+
+			for(sbyte i = 7; i >= 0; --i)
+			{
+				if(0!=(Mask & (byte)(1 << i)))
+				{
+					f[0] = ByteUtility.b2f[R];
+					f[1] = ByteUtility.b2f[G];
+					f[2] = ByteUtility.b2f[B];
+					f[3] = ByteUtility.b2f[A];
+					do
+					{
+						OpenTK.Graphics.OpenGL.GL.Light(
+							(OpenTK.Graphics.OpenGL.LightName)(OpenTK.Graphics.OpenGL.LightName.Light0 + i),
+							LightParameter,
+							f);
+						while (--i >= 0 && 0 == (Mask & (byte)(1 << i))) continue;
+					} while (i >= 0);
+					break;
+				}
+			}
+		}
+<#for(int i =0;i<ColorTypes.Length;i++)if(i!=Space){
+	var OtherType = ColorTypes[i].Name;
+	#>
+		public static bool operator == (<#=Type#> L, <#=OtherType#> R){
+			return L.A==R.A && L.R == R.R && L.G == R.G && L.B == R.B;
+		}
+		public static bool operator != (<#=Type#> L, <#=OtherType#> R){
+			return L.A==R.A && L.R == R.R && L.G == R.G && L.B == R.B;
+		}
+		public static explicit operator <#=Type#> (<#=OtherType#> value){
+			return new <#=Type#>{A=value.A,R=value.R,G=value.G,B=value.B,};
+		}
+		public bool Equals(<#=OtherType#> other){
+			return A==other.A && R==other.R && G==other.G && B==other.B;
+		}
+<#}#>
+	}
+<#}#>
+}
+<#+
+public class ColorType {
+	public int A, R, G, B;
+	public string Name, Hint;
+}
+#>

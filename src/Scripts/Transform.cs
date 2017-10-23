@@ -7,207 +7,319 @@ using BubblePony.Integers;
 namespace Quad64
 {
 	using U = TransformUtility;
-	[StructLayout(LayoutKind.Sequential)]
-	public struct Matrix4s : IEquatable<Matrix4s>
-	{
-		public Vector4s A, B, C, D;
-		public override string ToString()
-		{
-			return string.Concat("[", A.ToString(), ",",
-				string.Concat(B.ToString(), ",", C.ToString(),
-				string.Concat(",", D.ToString(), "]")));
-		}
-		public static bool Equals(ref Matrix4s L, ref Matrix4s R)
-		{
-			return L.A.Packed == R.A.Packed &&
-				L.B.Packed == R.B.Packed &&
-				L.C.Packed == R.C.Packed &&
-				L.D.Packed == R.D.Packed;
-		}
-		public static bool operator ==(Matrix4s L, Matrix4s R) { return Equals(ref L, ref R); }
-		public static bool operator !=(Matrix4s L, Matrix4s R) { return !Equals(ref L, ref R); }
-		public static int GetHashCode(ref Matrix4s L)
-		{
-			return ((L.A.Packed ^ (L.B.Packed * 5u)) ^ (L.C.Packed ^ (L.D.Packed * 5u))).GetHashCode();
-		}
-		public override int GetHashCode()
-		{
-			return GetHashCode(ref this);
-		}
-		public override bool Equals(object obj)
-		{
-			return obj is Matrix4s && ((Matrix4s)obj).Equals(ref this);
-		}
-		public bool Equals(ref Matrix4s other) { return Equals(ref this, ref other); }
-		public bool Equals(Matrix4s other) { return Equals(ref this, ref other); }
 
-		public Vector4s this[int i]
+	partial struct Mtx
+	{
+		public static Mtx Identity => new Mtx { XX_I = 1, YY_I = 1, ZZ_I = 1, WW_I = 1, };
+
+		public void LoadIdentity() { LoadIdentity(ref this); }
+
+		public static void LoadIdentity(ref Mtx M)
 		{
-			get => 0 == (i & 2) ? 0 == (i & 1) ? A : B : 0 == (i & 1) ? C : D;
-			set
-			{
-				if (0 == (i & 2))
-					if (0 == (i & 1))
-						A = value;
-					else
-						B = value;
-				else if (0 == (i & 1))
-					C = value;
-				else
-					D = value;
-			}
-		}
-		public short this[int i, int j]
-		{
-			get => 0 == (i & 2) ? 0 == (i & 1) ? A[j] : B[j] : 0 == (i & 1) ? C[j] : D[j];
-			set
-			{
-				if (0 == (i & 2))
-					if (0 == (i & 1))
-						A[j] = value;
-					else
-						B[j] = value;
-				else if (0 == (i & 1))
-					C[j] = value;
-				else
-					D[j] = value;
-			}
+			M.XX_I = 1; M.XY_I = 0; M.XZ_I = 0; M.XW_I = 0;
+			M.YX_I = 0; M.YY_I = 1; M.YZ_I = 0; M.YW_I = 0;
+			M.ZX_I = 0; M.ZY_I = 0; M.ZZ_I = 1; M.ZW_I = 0;
+			M.WX_I = 0; M.WY_I = 0; M.WZ_I = 0; M.WW_I = 1;
+
+			M.XV_F = 0;
+			M.YV_F = 0;
+			M.ZV_F = 0;
+			M.WV_F = 0;
 		}
 	}
 
 	[StructLayout(LayoutKind.Explicit)]
-	public struct Light : IEquatable<Light>
+	public struct Ambient : IEquatable<Ambient>
 	{
+		// alpha is ignored when testing for equality and generating hash code.
 		[FieldOffset(0)]
-		public ulong Packed;
+		public Color4a Color;
 
-		[FieldOffset(0)]
-		public Color4b color;
-
+		// alpha is ignored when testing for equality and generating hash code.
 		[FieldOffset(4)]
-		public Vector4c normal;
+		public Color4a ColorCopy;
 
-		public Color4b Color => new Color4b { R = color.R, G = color.G, B = color.B, A = 255, };
-		public Vector3c Dir => new Vector3c { X = normal.X, Y = normal.Y, Z = normal.Z };
+		[FieldOffset(0)]
+		public ulong Value;
 
-		public uint this[int i] {
-			get => 0 == (i & 1) ? color.Value : normal.Packed;
-			set
-			{
-				if (0 == (i & 1))
-					color.Value = value;
-				else
-					normal.Packed = value;
-			}
-		}
-		public override string ToString()
+		public uint this[int i]
 		{
-			return string.Concat("[", new Vector3b { X = color.R, Y = color.G, Z = color.B, }.ToString(), ",",
-				string.Concat(new Vector3c { X = normal.X, Y = normal.Y, Z = normal.Z, }.ToString(), "]"));
+			get => 0 == (1 & i) ? Color.Value : ColorCopy.Value;
+			set { if (0 == (1 & i)) Color.Value = value; else ColorCopy.Value = value; }
 		}
-		public static bool Equals(ref Light L, ref Light R)
+
+		public static bool operator == (Ambient L, Ambient R)
 		{
 			return
-				0 == ((L.color.Value ^ R.color.Value) & (new Color4b { R = 255, G = 255, B = 255, }.Value)) &&
-				0 == ((L.normal.Packed ^ R.normal.Packed) & (new Vector4c { X = -1, Y = -1, Z = -1, }.Packed));
+				L.Color.R == R.Color.R &&
+				L.Color.G == R.Color.G &&
+				L.Color.B == R.Color.B &&
+				L.ColorCopy.R == R.ColorCopy.R &&
+				L.ColorCopy.G == R.ColorCopy.G &&
+				L.ColorCopy.B == R.ColorCopy.B;
 		}
-		public static bool operator ==(Light L, Light R) { return Equals(ref L, ref R); }
-		public static bool operator !=(Light L, Light R) { return !Equals(ref L, ref R); }
-		public static int GetHashCode(ref Light L)
+		public static bool operator !=(Ambient L, Ambient R)
+		{
+			return
+				L.Color.R != R.Color.R ||
+				L.Color.G != R.Color.G ||
+				L.Color.B != R.Color.B ||
+				L.ColorCopy.R != R.ColorCopy.R ||
+				L.ColorCopy.G != R.ColorCopy.G ||
+				L.ColorCopy.B != R.ColorCopy.B;
+		}
+		public static bool Equals(ref Ambient L, ref Ambient R)
+		{
+			return
+				L.Color.R == R.Color.R &&
+				L.Color.G == R.Color.G &&
+				L.Color.B == R.Color.B &&
+				L.ColorCopy.R == R.ColorCopy.R &&
+				L.ColorCopy.G == R.ColorCopy.G &&
+				L.ColorCopy.B == R.ColorCopy.B;
+		}
+		public static bool Inequals(ref Ambient L, ref Ambient R)
+		{
+			return
+				L.Color.R != R.Color.R ||
+				L.Color.G != R.Color.G ||
+				L.Color.B != R.Color.B ||
+				L.ColorCopy.R != R.ColorCopy.R ||
+				L.ColorCopy.G != R.ColorCopy.G ||
+				L.ColorCopy.B != R.ColorCopy.B;
+		}
+		public static int GetHashCode(ref Ambient Ambient)
 		{
 			unchecked
 			{
-				return (int)(
-					((L.color.Value & new Color4b { R = 255, G = 255, B = 255, }.Value) * 31u) ^
-				(((L.normal.Packed & new Vector4c { X = -1, Y = -1, Z = -1, }.Packed) << 8) / 5u));
+				return
+					(((int)Ambient.Color.R << 16) | ((int)Ambient.Color.G << 8) | Ambient.Color.B) ^
+					(((Ambient.ColorCopy.R - (int)Ambient.ColorCopy.R) * (3 << 24)) +
+					((Ambient.ColorCopy.G - (int)Ambient.ColorCopy.G) * (3 << 25)) +
+					((Ambient.ColorCopy.B - (int)Ambient.ColorCopy.B) * (3 << 26)));
 			}
 		}
 		public override int GetHashCode()
 		{
 			return GetHashCode(ref this);
+		}
+		public bool Equals(Ambient other)
+		{
+			return Equals(ref this, ref other);
+		}
+		public bool Equals(ref Ambient other)
+		{
+			return Equals(ref this, ref other);
+		}
+		public override bool Equals(object obj)
+		{
+			return obj is Ambient && ((Ambient)obj).Equals(ref this);
+		}
+		public override string ToString()
+		{
+			// better than nothing.
+			return "Ambient";
+		}
+	}
+	public interface LightContainer
+	{
+		int Length { get; }
+		Light this[int i] { get; set; }
+		Ambient Ambient { get; set; }
+		void Get(out LightArray LightArray);
+		void Set(ref LightArray LightArray);
+	}
+	[StructLayout(LayoutKind.Explicit)]
+	public struct Light : IEquatable<Light>
+	{
+		[FieldOffset(0)]
+		public Ambient AsAmbient;
+
+		// alpha is ignored when testing for equality and generating hash code.
+		[FieldOffset(0)]
+		public Color4a Color;
+
+		// alpha is ignored when testing for equality and generating hash code.
+		[FieldOffset(4)]
+		public Color4a ColorCopy;
+
+		[FieldOffset(0)]
+		public ulong Pad0;
+
+		// W is ignored when testing for equality and generating hash code.
+		[FieldOffset(8)]
+		public Vector4c Normal;
+
+		// completely ignored from equality and hash code.
+		[FieldOffset(12)]
+		public uint WordPad;
+
+		[FieldOffset(8)]
+		public ulong Pad1;
+
+		public static Light InitOn => new Light { Color = Color4a.U64_Ambient, ColorCopy = Color4a.U64_Ambient, Normal = { X=0,Y=1,Z=0, } };
+		public static Light InitOff => new Light {};
+
+		public uint this[int i]
+		{
+			get
+			{
+				return 0 == (2 & i) ?
+					0 == (1 & i) ? Color.Value : ColorCopy.Value :
+					0 == (1 & i) ? Normal.Packed : WordPad;
+			}
+			set
+			{
+				if (0 == (2 & i))
+					if (0 == (1 & i))
+						Color.Value = value;
+					else
+						ColorCopy.Value = value;
+				else if (0 == (1 & i))
+					Normal.Packed = value;
+				else
+					WordPad = value;
+			}
+		}
+
+		public static int GetHashCode(ref Light Value)
+		{
+			return Ambient.GetHashCode(ref Value.AsAmbient) ^(
+				(((Value.Normal.X & 127) << (32 - (3 + (7 * (0 + 1))))) | (Value.Normal.X < 0 ? (1 << 31) : 0)) |
+				(((Value.Normal.Y & 127) << (32 - (3 + (7 * (1 + 1))))) | (Value.Normal.Y < 0 ? (1 << 30) : 0)) |
+				(((Value.Normal.Z & 127) << (32 - (3 + (7 * (2 + 1))))) | (Value.Normal.Z < 0 ? (1 << 29) : 0)) );
+		}
+		public override int GetHashCode()
+		{
+			return GetHashCode(ref this);
+		}
+		public static bool operator ==(Light L, Light R)
+		{
+			return
+				L.Normal.X == R.Normal.X &&
+				L.Normal.Y == R.Normal.Y &&
+				L.Normal.Z == R.Normal.Z &&
+				Ambient.Equals(ref L.AsAmbient, ref R.AsAmbient);
+		}
+		public static bool operator !=(Light L, Light R)
+		{
+			return
+				L.Normal.X != R.Normal.X ||
+				L.Normal.Y != R.Normal.Y ||
+				L.Normal.Z != R.Normal.Z ||
+				Ambient.Inequals(ref L.AsAmbient, ref R.AsAmbient);
+		}
+		public static bool Equals(ref Light L,ref Light R)
+		{
+			return
+				L.Normal.X == R.Normal.X &&
+				L.Normal.Y == R.Normal.Y &&
+				L.Normal.Z == R.Normal.Z &&
+				Ambient.Equals(ref L.AsAmbient, ref R.AsAmbient);
+		}
+		public static bool Inequals(ref Light L,ref  Light R)
+		{
+			return
+				L.Normal.X != R.Normal.X ||
+				L.Normal.Y != R.Normal.Y ||
+				L.Normal.Z != R.Normal.Z ||
+				Ambient.Inequals(ref L.AsAmbient, ref R.AsAmbient);
+		}
+		public bool Equals(Light other)
+		{
+			return Equals(ref this, ref other);
+		}
+		public bool Equals(ref Light other)
+		{
+			return Equals(ref this, ref other);
 		}
 		public override bool Equals(object obj)
 		{
 			return obj is Light && ((Light)obj).Equals(ref this);
 		}
-		public bool Equals(ref Light other) { return Equals(ref this, ref other); }
-		public bool Equals(Light other) { return Equals(ref this, ref other); }
-
+		public override string ToString()
+		{
+			return "Light";
+		}
 	}
-
-	[StructLayout(LayoutKind.Sequential)]
-	public struct LightArray : IEquatable<LightArray>
+	partial struct LightArray
 	{
-		public Light 
-			A, B, C, D,
-			E, F, G, H;
-		public static int GetHashCode(ref LightArray L)
-		{
+		public static bool Equals(ref LightArray L, ref LightArray R, byte Count){
 			return
-			((Light.GetHashCode(ref L.G) ^ (Light.GetHashCode(ref L.H) * 5)) +
-			(Light.GetHashCode(ref L.E) ^ (Light.GetHashCode(ref L.F) * 5))) +
-			((Light.GetHashCode(ref L.G) ^ (Light.GetHashCode(ref L.H) * 5)) +
-			(Light.GetHashCode(ref L.E) ^ (Light.GetHashCode(ref L.F) * 5)) * 5);
+				(Count < 4) ?
+				(Count < 2) ?
+				(Count < 1) ? Lights0.Equals(ref L.Lights0, ref R.Lights0)
+				: Lights1.Equals(ref L.Lights1, ref R.Lights1)
+				: (Count < 3) ? Lights2.Equals(ref L.Lights2, ref R.Lights2)
+				: Lights3.Equals(ref L.Lights3, ref R.Lights3)
+				: (Count < 6) ?
+				(Count < 5) ? Lights4.Equals(ref L.Lights4, ref R.Lights4)
+				: Lights5.Equals(ref L.Lights5, ref R.Lights5)
+				: (Count < 7) ? Lights6.Equals(ref L.Lights6, ref R.Lights6)
+				: Lights7.Equals(ref L.Lights7, ref R.Lights7);
 		}
-		public static bool Equals(ref LightArray L, ref LightArray R)
-		{
-			return
-				Light.Equals(ref L.A, ref R.A) &&
-				Light.Equals(ref L.B, ref R.B) &&
-				Light.Equals(ref L.C, ref R.C) &&
-				Light.Equals(ref L.D, ref R.D) &&
-				Light.Equals(ref L.E, ref R.E) &&
-				Light.Equals(ref L.F, ref R.F) &&
-				Light.Equals(ref L.G, ref R.G) &&
-				Light.Equals(ref L.H, ref R.H);
-		}
-		public static bool Equals(
+		public static int GetHashCode(
 			ref LightArray L,
-			ref LightArray R,
-			int Count)
+			byte Count)
 		{
 			return
-				Count<=0 ||
-				( Light.Equals(ref L.A, ref R.A) &&
-				  (Count==1||(Light.Equals(ref L.B, ref R.B) &&
-					(Count==2||(Light.Equals(ref L.C, ref R.C) &&
-					 (Count==3||(Light.Equals(ref L.D, ref R.D) &&
-					 (Count==4||(Light.Equals(ref L.E, ref R.E) &&
-					(Count==5||(Light.Equals(ref L.F, ref R.F) &&
-					(Count==6||(Light.Equals(ref L.G, ref R.G) &&
-					(Count==7||Light.Equals(ref L.H, ref R.H)))))))))))))));
+				(Count < 4) ?
+				(Count < 2) ?
+				(Count < 1) ? Lights0.GetHashCode(ref L.Lights0)
+				: Lights1.GetHashCode(ref L.Lights1)
+				: (Count < 3) ? Lights2.GetHashCode(ref L.Lights2)
+				: Lights3.GetHashCode(ref L.Lights3)
+				: (Count < 6) ?
+				(Count < 5) ? Lights4.GetHashCode(ref L.Lights4)
+				: Lights5.GetHashCode(ref L.Lights5)
+				: (Count < 7) ? Lights6.GetHashCode(ref L.Lights6)
+				: Lights7.GetHashCode(ref L.Lights7);
 		}
+		public int GetHashCode(byte LightCount) { return GetHashCode(ref this, LightCount); }
 
-		public Light this[int i]
+		public static void GetAmbient(
+			ref LightArray L,
+			byte Count,
+			out Ambient Ambient)
 		{
-			get => (0 == (i & 4)) ? (0 == (i & 2)) ? (0 == (i & 1)) ? A : B : (0 == (i & 1)) ? C : D :
-				(0 == (i & 2)) ? (0 == (i & 1)) ? E : F : (0 == (i & 1)) ? G : H;
-			set
-			{
-				if (0 == (i & 4)) if (0 == (i & 2)) if (0 == (i & 1)) A = value; else B = value; else if (0 == (i & 1)) C = value; else D = value;
-				else if (0 == (i & 2)) if (0 == (i & 1)) E = value; else F = value; else if (0 == (i & 1)) G = value; else H = value;
-			}
+			Ambient =
+				(Count < 4) ?
+				(Count < 2) ?
+				(Count < 1) ? L.Lights0.Ambient
+				: L.Lights1.Ambient
+				: (Count < 3) ? L.Lights2.Ambient
+				: L.Lights3.Ambient
+				: (Count < 6) ?
+				(Count < 5) ? L.Lights4.Ambient
+				: L.Lights5.Ambient
+				: (Count < 7) ? L.Lights6.Ambient
+				: L.Lights7.Ambient;
 		}
-		public uint this[int i, int j]
+		public static Ambient GetAmbient(
+			ref LightArray L,
+			byte Count)
 		{
-			get => (0 == (i & 4)) ? (0 == (i & 2)) ? (0 == (i & 1)) ? A[j] : B[j] : (0 == (i & 1)) ? C[j] : D[j] :
-				(0 == (i & 2)) ? (0 == (i & 1)) ? E[j] : F[j] : (0 == (i & 1)) ? G[j] : H[j];
-			set
-			{
-				if (0 == (i & 4)) if (0 == (i & 2)) if (0 == (i & 1)) A[j] = value; else B[j] = value; else if (0 == (i & 1)) C[j] = value; else D[j] = value;
-				else if (0 == (i & 2)) if (0 == (i & 1)) E[j] = value; else F[j] = value; else if (0 == (i & 1)) G[j] = value; else H[j] = value;
-			}
+			return
+				(Count < 4) ?
+				(Count < 2) ?
+				(Count < 1) ? L.Lights0.Ambient
+				: L.Lights1.Ambient
+				: (Count < 3) ? L.Lights2.Ambient
+				: L.Lights3.Ambient
+				: (Count < 6) ?
+				(Count < 5) ? L.Lights4.Ambient
+				: L.Lights5.Ambient
+				: (Count < 7) ? L.Lights6.Ambient
+				: L.Lights7.Ambient;
 		}
-		public override int GetHashCode()
+		public void GetAmbient(byte Count, out Ambient Ambient)
 		{
-			return GetHashCode(ref this);
+			GetAmbient(ref this, Count, out Ambient);
 		}
-		public override bool Equals(object obj)
+		public Ambient GetAmbient(byte Count)
 		{
-			return obj is LightArray && ((LightArray)obj).Equals(ref this);
+			return GetAmbient(ref this, Count);
 		}
-		public bool Equals(ref LightArray other) { return Equals(ref this, ref other); }
-		public bool Equals(LightArray other) { return Equals(ref this, ref other); }
 	}
 
 	public struct Transform : IEquatable<Transform>
@@ -348,9 +460,9 @@ namespace Quad64
 		{
 			get
 			{
-				return Matrix4.CreateTranslation(translation) *
+				return Matrix4.CreateScale(scale) * 
 					Matrix4.CreateFromQuaternion(rotation) *
-					Matrix4.CreateScale(scale);
+					Matrix4.CreateTranslation(translation);
 			}
 			set
 			{

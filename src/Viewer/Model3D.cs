@@ -390,7 +390,7 @@ namespace Quad64
 
 				if (material.HasMaterialColor)
 				{
-					var color = (Color4b)material.lightColor;
+					var color = (Color4b)material.light.Light1.Color;
 
 					Kd = new Wavefront.MaterialFilter(color.r, color.g, color.b);
 				}

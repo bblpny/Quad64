@@ -387,15 +387,13 @@ namespace Quad64.Scripts
 		public static byte Parse(
 			Model3D mdl,
 			Level lvl,
+			ref Material material,
 			SegmentOffset segOff,
 			byte overrideDrawLayer = 0)
 		{
 			var rt = new Runtime(lvl, mdl);
 
-			//if (ignoreMaterialInput)
-				rt.mat = Material.Default;
-			//else
-			//	rt.mat = material;
+			rt.mat = material;
 
 			if (0 != overrideDrawLayer)
 				rt.mat.drawLayerBillboard = overrideDrawLayer;
@@ -447,6 +445,8 @@ namespace Quad64.Scripts
 					Exit(rt, 0x06);
 				}
 				// otherwise, we do not.
+				rt.mat = rt2.mat;
+				rt.vb = rt2.vb;
 			}
 			public static void CMD_B6(Runtime rt,ref ByteSegment cmd)
 			{
@@ -464,7 +464,7 @@ namespace Quad64.Scripts
 			public static void CMD_BA(Runtime rt,ref ByteSegment cmd)
 			{
 				//F3D_SETOTHERMODE_H
-				ExpandSetMode(cmd, ref rt.mat.Homode);
+				ExpandSetMode(cmd, ref rt.mat.OtherModeH);
 			}
 			public static void CMD_BC(Runtime rt,ref ByteSegment cmd)
 			{//MOVEWORD
@@ -473,14 +473,14 @@ namespace Quad64.Scripts
 			public static void CMD_B9(Runtime rt, ref ByteSegment cmd)
 			{
 				//F3D_SETOTHERMODE_L
-				ExpandSetMode(cmd, ref rt.mat.Lomode);
+				ExpandSetMode(cmd, ref rt.mat.OtherModeL);
 			}
 			public static void CMD_EF(Runtime rt, ref ByteSegment cmd)
 			{
 				//	G_RDPSETOTHERMODE
-				rt.mat.Homode = (rt.mat.Homode & ((1u << 24) - 1)) | 
+				rt.mat.OtherModeH = (rt.mat.OtherModeH & ((1u << 24) - 1)) | 
 					(bytesToUInt32(cmd) & ((1u << 24) - 1));
-				rt.mat.Lomode = bytesToUInt32(cmd, 4);
+				rt.mat.OtherModeL = bytesToUInt32(cmd, 4);
 			}
 			public static void CMD_BB(Runtime rt,ref ByteSegment cmd)
 			{
@@ -506,23 +506,25 @@ namespace Quad64.Scripts
 			}
 			public static void CMD_F7(Runtime rt,ref ByteSegment cmd)
 			{
-				rt.mat.fillColor = (Color4b)bytesToUInt32(cmd, 4);
+				rt.mat.fillColor.Value = bytesToUInt32(cmd, 4);
 			}
 			public static void CMD_F8(Runtime rt,ref ByteSegment cmd)
 			{
-				rt.mat.fogColor = (Color4b)bytesToUInt32(cmd, 4);
+				rt.mat.fogColor.Value = bytesToUInt32(cmd, 4);
 			}
 			public static void CMD_FB(Runtime rt,ref ByteSegment cmd)
 			{
-				rt.mat.envColor = (Color4b)bytesToUInt32(cmd, 4);
+				rt.mat.envColor.Value = bytesToUInt32(cmd, 4);
 			}
 			public static void CMD_F9(Runtime rt,ref ByteSegment cmd)
 			{
-				rt.mat.blendColor = (Color4b)bytesToUInt32(cmd, 4);
+				rt.mat.blendColor.Value = bytesToUInt32(cmd, 4);
 			}
 			public static void CMD_FA(Runtime rt,ref ByteSegment cmd)
 			{
-				rt.mat.primColor = (Color4b)bytesToUInt32(cmd, 4);
+				rt.mat.primColor.Value = bytesToUInt32(cmd, 4);
+				rt.mat.primColorMin = cmd[2];
+				rt.mat.primColorFactor = cmd[3];
 			}
 			public static void CMD_FC(Runtime rt,ref ByteSegment cmd)
 			{
@@ -559,7 +561,7 @@ namespace Quad64.Scripts
 							else
 							{
 								rt.mdl.builder.AddTexture(
-									TextureFormats.ColorTexture(temp.lightColor),
+									TextureFormats.ColorTexture((Color4b)temp.light.Lights0.Light1.Color.InverseAlpha),
 									rt.mdl.builder.newTexInfo(temp.wrapModes),
 									temp.segOff, temp.Register()
 								);
@@ -577,26 +579,13 @@ namespace Quad64.Scripts
 				var index = cmd[3];
 				if (index == 0)
 				{
-					if (0 == (offset & 0x20))
-					{
-						BindMatrix(
-							ref mat.I,
-							(ushort)(offset & 0x1Fu),
-							bytesToInt16(cmd, 4),
-							bytesToInt16(cmd, 6));
-					}
-					else
-					{
-						BindMatrix(
-							ref mat.I,
-							(ushort)(offset & 0x1Fu),
-							bytesToInt16(cmd, 4),
-							bytesToInt16(cmd, 6));
-					}
+					mat.Mtx.Set(index >> 2, (uint)bytesToUInt32(cmd, 4));
 				}
 				else if (index == 2)
 				{
 					mat.numLightWord = bytesToUInt32(cmd, 4);
+					//var numlight = ((mat.numLightWord - 0x80000000u)/32)-1;
+					//Console.WriteLine("NumLight=" + numlight);
 				}
 				else if (index == 4)
 				{
@@ -604,53 +593,43 @@ namespace Quad64.Scripts
 						mat.clipNX = bytesToUInt32(cmd, 4);
 					else if (offset == 0x0C)
 						mat.clipNY = bytesToUInt32(cmd, 4);
-					if (offset == 0x14)
+					else if (offset == 0x14)
 						mat.clipPX = bytesToUInt32(cmd, 4);
 					else if (offset == 0x1C)
 						mat.clipPY = bytesToUInt32(cmd, 4);
+					else
+						Console.WriteLine("Weird clip offset:" + offset.ToString("X2"));
 				}
 				else if (index == 8)
 				{
 					mat.fogWord = bytesToUInt32(cmd, 4);
-					if (mat.fogWord != 0)
-					{
-						OpenTK.Graphics.OpenGL.GL.Fog(OpenTK.Graphics.OpenGL.FogParameter.FogMode, (int)OpenTK.Graphics.OpenGL.FogMode.FragmentDepth);
-						//hack: this should be per object.
-						OpenTK.Graphics.OpenGL.GL.Fog(
-							OpenTK.Graphics.OpenGL.FogParameter.FogStart,
-							(float)mat.fogOffset / 255);
-
-						OpenTK.Graphics.OpenGL.GL.Fog(
-							OpenTK.Graphics.OpenGL.FogParameter.FogDensity,
-							(float)mat.fogMultiplier / 255);
-					}
 				}
 				else if (index == 10)
 				{
-					mat.light[offset >> 5, ((offset >> 2) & 1)] = bytesToUInt32(cmd, 4);
+					mat.light[offset >> 5, 3 & (offset >> 2)] = bytesToUInt32(cmd, 4);
 				}
 				// todo: 6 = segment, 12 = points, 14 = perspnorm.
 			}
 			private static void F3D_MOVEMEM(Runtime rt, ref Material temp, ref ByteSegment cmd)
 			{
-				if (cmd[1] == 0x86)
+				var p = cmd[1];
+				var size = bytesToUInt16(cmd, 2);
+				var data = rt.rom.getDataFromSegmentAddress(bytesToSegmentOffset(cmd, 4), size);
+				if (p >= 0x86 && p <= 0x94)
 				{
-					//ROM rom = ROM.Instance;
-					temp.lightColor = (Color4b)(bytesToUInt24(
-						rt.rom.getDataFromSegmentAddress(bytesToSegmentOffset(cmd, 4), 3),
-						0) | 0xFF000000u);
-					//rom.printArray(colData, 4);
-				}
-				else if(0x88 == cmd[1])
-				{
+					if (size != 16) throw new System.InvalidOperationException();
 
-					temp.darkColor = (Color4b)(bytesToUInt24(
-						rt.rom.getDataFromSegmentAddress(bytesToSegmentOffset(cmd, 4), 3),
-						0) | 0xFF000000u);
+					temp.light[(byte)((p - 0x86) >> 1)] = new Light
+					{
+						Color = { Value = bytesToUInt32(data, 0), },
+						ColorCopy = { Value = bytesToUInt32(data, 4), },
+						Normal = { Packed = bytesToUInt32(data, 8), },
+						WordPad = bytesToUInt32(data, 12),
+					};
 				}
 				else
 				{
-					Console.WriteLine("Got a color:" + cmd[1].ToString("X2"));
+					Console.WriteLine("Some other memory:" + p.ToString("X2"));
 				}
 			}
 			static void ExpandSetMode(ByteSegment cmd, ref uint bits)
@@ -660,9 +639,6 @@ namespace Quad64.Scripts
 					bits = (bits & ~((uint)((1uL << (sbyte)cmd[3]) - 1uL) << (sbyte)cmd[2]))
 						| bytesToUInt32(cmd, 4);
 				}
-			}
-			private static void BindMatrix(ref Matrix4s Matrix, ushort Offset, short A, short B)
-			{
 			}
 			private unsafe bool F3D_VTX(ref ByteSegment cmd)
 			{
@@ -793,10 +769,10 @@ namespace Quad64.Scripts
 				if ((temp.geometryMode & 0x20000) != 0)
 				{
 					// face normal..
-					temp_color.X = temp.lightColor.r;
-					temp_color.Y = temp.lightColor.g;
-					temp_color.Z = temp.lightColor.b;
-					temp_color.W = temp.lightColor.a;
+					temp_color.X = temp.light.Light1.Color.r;
+					temp_color.Y = temp.light.Light1.Color.g;
+					temp_color.Z = temp.light.Light1.Color.b;
+					temp_color.W = 1f-temp.light.Light1.Color.a;
 
 					temp_vertex = (Vertex128)a;
 					LoadVertexShared(out temp_pos, out temp_uv, out temp_normal, ref temp_vertex, ref temp);
@@ -870,8 +846,8 @@ namespace Quad64.Scripts
 
 			static private unsafe bool G_SETCOMBINE(ref Material temp, ref ByteSegment cmd)
 			{
-				temp.Hcomb = bytesToUInt32(cmd, 0);
-				temp.Lcomb = bytesToUInt32(cmd, 4);
+				temp.CombinerH = bytesToUInt32(cmd, 0);
+				temp.CombinerL = bytesToUInt32(cmd, 4);
 
 				if ((~bytesToUInt24(cmd, 1)) == 0)
 				{

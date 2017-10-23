@@ -103,6 +103,11 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="src\ColorTypes.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>ColorTypes.tt</DependentUpon>
+    </Compile>
     <Compile Include="src\Forms\ROMInfoForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -149,6 +154,16 @@
     <Compile Include="src\Scripts\Fast3DScripts.cs" />
     <Compile Include="src\Scripts\GeoNode.cs" />
     <Compile Include="src\Scripts\GeoScripts.cs" />
+    <Compile Include="src\Scripts\LightArray.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>LightArray.tt</DependentUpon>
+    </Compile>
+    <Compile Include="src\Scripts\MatrixTypes.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>MatrixTypes.tt</DependentUpon>
+    </Compile>
     <Compile Include="src\Scripts\ModelBuilder.cs" />
     <Compile Include="src\Scripts\SegmentOffset.cs" />
     <Compile Include="src\Scripts\SharedScripts.cs" />
@@ -250,6 +265,18 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="icon_KtQ_icon.ico" />
+    <Content Include="src\ColorTypes.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>ColorTypes.cs</LastGenOutput>
+    </Content>
+    <Content Include="src\Scripts\LightArray.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>LightArray.cs</LastGenOutput>
+    </Content>
+    <Content Include="src\Scripts\MatrixTypes.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>MatrixTypes.cs</LastGenOutput>
+    </Content>
     <None Include="Resources\icon_Star1_gray.png" />
     <None Include="Resources\icon_Star1.png" />
   </ItemGroup>

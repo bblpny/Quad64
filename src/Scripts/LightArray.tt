@@ -1,0 +1,134 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ output extension=".cs" #>
+using System.Runtime.InteropServices;
+using System.Diagnostics;
+namespace Quad64 {
+<#foreach(var Type in new LightType[]{
+	new LightType{LightCount=8,LightMemberCount=8, IsArray=true,},
+	new LightType{LightCount=0,LightMemberCount=1,},
+	new LightType{LightCount=1,LightMemberCount=1,},
+	new LightType{LightCount=2,LightMemberCount=2,},
+	new LightType{LightCount=3,LightMemberCount=3,},
+	new LightType{LightCount=4,LightMemberCount=4,},
+	new LightType{LightCount=5,LightMemberCount=5,},
+	new LightType{LightCount=6,LightMemberCount=6,},
+	new LightType{LightCount=7,LightMemberCount=7,},
+}){#>
+	[StructLayout(LayoutKind.Explicit,Size=0x<#=((1+(Type.LightMemberCount<<1))<<3).ToString("X2")#>)]
+public partial struct <#=Type.Name#> : System.IEquatable<<#=Type.Name#>><#if(!Type.IsArray){
+	#>,
+	LightContainer<#
+}#>{
+
+	private static Light OutOfRangeLight(){throw new System.ArgumentOutOfRangeException("index");}
+	private static uint OutOfRangeWord(){throw new System.ArgumentOutOfRangeException("index");}
+
+<#	for(int i = 0; i < Type.LightMemberCount; ++i){#>
+	[FieldOffset(0x<#=(i<<5).ToString("X2")#>)] public Light <#=LightName[i]#>;
+<#	}#>
+<#	if(Type.IsArray){
+		for(int i = 0; i < 8; ++i){#>
+	[DebuggerBrowsable(DebuggerBrowsableState.Never),FieldOffset(0x00)] public <#=LightTypeName[i]#> <#=LightTypeName[i]#>;
+<#		}
+		for(int i = 0; i < Type.LightMemberCount; ++i){#>
+	public static explicit operator <#=Type.Name#>(<#=LightTypeName[i]#> Value){ return new <#=Type.Name#> { <#=LightTypeName[i]#>=Value, }; }
+	public static explicit operator <#=LightTypeName[i]#>(<#=Type.Name#> Value){ return Value.<#=LightTypeName[i]#>; }
+	public void Get(out <#=LightTypeName[i]#> Value){Value=<#=LightTypeName[i]#>;}
+	public void Set(ref <#=LightTypeName[i]#> Value){<#=LightTypeName[i]#>=Value;}
+<#		}
+	}else{#>
+	[FieldOffset(0x<#=(Type.LightMemberCount<<5).ToString("X2")#>)] public Ambient Ambient;
+	[FieldOffset(0x<#=(8+(Type.LightMemberCount<<5)).ToString("X2")#>)] public ulong AmbientPad;
+	public const int Length = <#=Type.LightCount#>;
+	public void Write(ref Light Value, byte Index){
+		if(Index>=<#=Type.LightMemberCount#>)Ambient=Value.AsAmbient;
+<#for(int i = Type.LightMemberCount-1;i>0;--i){#>
+		else if(<#=i#>==Index) <#=LightName[i]#>=Value;
+<#}#>
+		else <#=LightName[0]#>=Value;
+	}
+	public void Get(out LightArray LightArray) {
+		LightArray = new LightArray { <#=Type.Name#> = this, };
+	}
+	public void Set(ref LightArray LightArray) {
+		this = LightArray.<#=Type.Name#>;
+	}
+	Ambient LightContainer.Ambient {get => this.Ambient; set => this.Ambient = value; }
+	int LightContainer.Length => Length;
+<#	}#>
+<#for(int Mode = 0;Mode<2;++Mode){#>
+	public <#=Mode==0?"Light":"uint"#> this[int index<#if(Mode!=0){#>, int word<#}#>]{
+		get => <#for(int i=0,n=Type.IsArray?Type.LightCount:(Type.LightCount+Mode);i<n;++i){#><#=i#>==index?<#=i==Type.LightCount?"Ambient":LightName[i]#><#if(Mode!=0){#>[word]<#}#>:<#}#>OutOfRange<#=0==Mode?"Light":"Word"#>();
+		set {<#for(int i=0,n=Type.IsArray?Type.LightCount:(Type.LightCount+Mode);i<n;++i){#>if(<#=i#>==index)<#=i==Type.LightCount?"Ambient":LightName[i]#><#if(Mode!=0){#>[word]<#}#>=value;else <#}#>throw new System.ArgumentOutOfRangeException("index"); }
+	}
+<#}#>
+<#	for(int EqualityFunction=0;EqualityFunction < 2; EqualityFunction++){#>
+	public static bool <#
+		if(EqualityFunction==0){
+			#>Equals(ref <#=Type.Name#> L, ref <#=Type.Name#> R)<#
+		}else{
+			#>operator == (<#=Type.Name#> L, <#=Type.Name#> R)<#
+		}#>{
+		return <#if(!Type.IsArray){#>Ambient.Equals(ref L.Ambient,ref R.Ambient)<#}
+		for(int i = 0; i < Type.LightCount; ++i){if(0!=i||!Type.IsArray){#> &&
+			<#}#>Light.Equals(ref L.<#=LightName[i]#>,ref R.<#=LightName[i]#>)<#
+		}#>;
+	}
+	public static bool <#
+		if(EqualityFunction==0){
+			#>Inequals(ref <#=Type.Name#> L, ref <#=Type.Name#> R)<#
+		}else{
+			#>operator != (<#=Type.Name#> L, <#=Type.Name#> R)<#
+		}#>{
+		return <#if(!Type.IsArray){#>Ambient.Inequals(ref L.Ambient, ref R.Ambient)<#}
+		for(int i = 0; i < Type.LightCount; ++i){if(0!=i||!Type.IsArray){#> ||
+			<#}#>Light.Inequals(ref L.<#=LightName[i]#>,ref R.<#=LightName[i]#>)<#
+		}#>;
+	}
+<#	}#>
+	public bool Equals(<#=Type.Name#> other){return Equals(ref this, ref other);}
+	public bool Equals(ref <#=Type.Name#> other){return Equals(ref this, ref other);}
+	public override bool Equals(object obj){ return obj is <#=Type.Name#> && ((<#=Type.Name#>)obj).Equals(ref this); }
+	public static int GetHashCode(ref <#=Type.Name#> Value){
+<#if(Type.LightCount!=0){#>
+		uint Temp;
+		unchecked {
+<#}#>
+		return
+			<#if(!Type.IsArray){#>Ambient.GetHashCode(ref Value.Ambient)<#}
+	for(int i = 0; i < Type.LightCount; ++i){if(0!=i||!Type.IsArray){#> ^
+			<#}#>(int)(((((Temp=(uint)Light.GetHashCode(ref Value.<#=LightName[i]#>)))<<<#=31&(i*5)#>))|(Temp>><#=31&(32-(i*5))#>))<#
+	}#>;
+<#if(Type.LightCount!=0){#>
+		}
+<#}#>
+	}
+	public override int GetHashCode(){return GetHashCode(ref this);}
+	public override string ToString(){return "<#=Type.Name#>"; }
+}
+<#}#>
+}
+<#+
+
+public static string[] LightName = {
+	"Light1","Light2","Light3","Light4",
+	"Light5","Light6","Light7","Light8",
+};
+
+public static string[] LightTypeName = {
+	"Lights0","Lights1","Lights2","Lights3",
+	"Lights4","Lights5","Lights6","Lights7",
+};
+public static string LightArrayName = "LightArray";
+
+public class LightType {
+	public int LightCount;
+	public int LightMemberCount;
+	public bool IsArray;
+	public string Name {get { return IsArray ? LightArrayName : LightTypeName[LightCount]; }}
+}
+#>

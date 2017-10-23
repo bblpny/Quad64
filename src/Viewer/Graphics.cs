@@ -50,14 +50,36 @@ namespace Quad64
 	}
 	public enum LightMode : byte
 	{
-		Hard,
-		Smooth,
+		Hard0,
+		Smooth0,
+		Hard1,
+		Smooth1,
+		Hard2,
+		Smooth2,
+		Hard3,
+		Smooth3,
+		Hard4,
+		Smooth4,
+		Hard5,
+		Smooth5,
+		Hard6,
+		Smooth6,
+		Hard7,
+		Smooth7,
 	}
 	public static class LightModeUtility
 	{
-		public const int Count = 2;
-		public const int BitSize = 1;
-		public const LightMode Mask = (LightMode)1;
+		public const int Count = 16;
+		public const int BitSize = 4;
+		public const LightMode Mask = (LightMode)15;
+		public const byte MaxLights = 7;
+		public static LightMode Describe(bool Smooth, byte LightCount)
+		{
+			if (LightCount > MaxLights) LightCount = MaxLights;
+
+			return (LightMode)((byte)(((LightCount<<1)|(Smooth?1:0))&(byte)Mask));
+		}
+		public static byte LightCount(this LightMode Value) { return (byte)((byte)(Value & Mask) >> 1); }
 		public static LightMode Sanitize(this LightMode Value) { return Value & Mask; }
 		public static void Sanitize(ref LightMode Value) { Value &= Mask; }
 	}
@@ -308,6 +330,107 @@ namespace Quad64
 			return Value;
 		}
 	}
+	[StructLayout(LayoutKind.Explicit)]
+	public struct GraphicsLight : IEquatable<GraphicsLight>
+	{
+		[FieldOffset(0)]
+		public Color4b Color;
+		[FieldOffset(4)]
+		public Vector4c Normal;
+		[FieldOffset(0)]
+		public long Value;
+		public static void Sanitize(ref GraphicsLight Light)
+		{
+			Light.Color.A = 255;
+			Light.Normal.W = 0;
+		}
+		public GraphicsLight Sanitize()
+		{
+			var Copy = this;
+			Copy.Color.A = 255;
+			Copy.Normal.W = 0;
+			return Copy;
+		}
+		public static int GetHashCode(ref GraphicsLight L)
+		{
+			return ((((int)L.Color.R << 16) | ((int)L.Color.G << 8) | ((int)L.Color.B))*5) ^
+				((((L.Normal.Y & 127) << 25) | ((((int)L.Normal.Y << (24 - 7)) & (1 << 24)))) |
+				(((L.Normal.X & 127) << 17) | (((int)L.Normal.X << (16 - 7)) & (1 << 16))) |
+				(((L.Normal.Z & 127) << 7) | (((int)L.Normal.Z << (8 - 7)) & (1 << 8))));
+		}
+		public static int GetHashCode(ref GraphicsLight L, sbyte ROT)
+		{
+			unchecked
+			{
+				uint HashCode = (uint)GetHashCode(ref L);
+				return (int)((HashCode << ROT) | (HashCode >> (32 - ROT)));
+			}
+		}
+		public override int GetHashCode()
+		{
+			return GetHashCode(ref this);
+		}
+		public bool Equals(ref GraphicsLight other)
+		{
+			return Color.R == other.Color.R &&
+				Color.G == other.Color.G &&
+				Color.B == other.Color.B &&
+				Normal.X == other.Normal.X &&
+				Normal.Y == other.Normal.Y &&
+				Normal.Z == other.Normal.Z;
+		}
+		public bool Equals(GraphicsLight other)
+		{
+			return Color.R == other.Color.R &&
+				Color.G == other.Color.G &&
+				Color.B == other.Color.B &&
+				Normal.X == other.Normal.X &&
+				Normal.Y == other.Normal.Y &&
+				Normal.Z == other.Normal.Z;
+		}
+		public override bool Equals(object obj)
+		{
+			return obj is GraphicsLight && ((GraphicsLight)obj).Equals(ref this);
+		}
+		public static bool Equals(ref GraphicsLight L, ref GraphicsLight R)
+		{
+			return L.Color.R == R.Color.R &&
+					L.Color.G == R.Color.G &&
+					L.Color.B == R.Color.B &&
+					L.Normal.X == R.Normal.X &&
+					L.Normal.Y == R.Normal.Y &&
+					L.Normal.Z == R.Normal.Z;
+		}
+		public static bool Inequals(ref GraphicsLight L, ref GraphicsLight R)
+		{
+			return L.Color.R != R.Color.R ||
+					L.Color.G != R.Color.G ||
+					L.Color.B != R.Color.B ||
+					L.Normal.X != R.Normal.X ||
+					L.Normal.Y != R.Normal.Y ||
+					L.Normal.Z != R.Normal.Z;
+		}
+		public static bool operator ==(GraphicsLight L, GraphicsLight R)
+		{
+			return L.Color.R == R.Color.R &&
+					L.Color.G == R.Color.G &&
+					L.Color.B == R.Color.B &&
+					L.Normal.X == R.Normal.X &&
+					L.Normal.Y == R.Normal.Y &&
+					L.Normal.Z == R.Normal.Z;
+
+		}
+		public static bool operator !=(GraphicsLight L, GraphicsLight R)
+		{
+			return L.Color.R != R.Color.R ||
+					L.Color.G != R.Color.G ||
+					L.Color.B != R.Color.B ||
+					L.Normal.X != R.Normal.X ||
+					L.Normal.Y != R.Normal.Y ||
+					L.Normal.Z != R.Normal.Z;
+
+		}
+	}
 	[StructLayout(LayoutKind.Sequential)]
 	public struct GraphicsState : IEquatable<GraphicsState>
 	{
@@ -351,15 +474,24 @@ namespace Quad64
 		/// </summary>
 		public Color4b Color;
 		/// <summary>
-		/// the light color (currently diffuse) for lighting.
+		/// game does not set this.
 		/// this is ignored when Lit is not present in FeatureMask (treated as Color4b.Default_Diffuse when so)
 		/// </summary>
-		public Color4b LightColor;
+		public Color4b Diffuse;
+
 		/// <summary>
-		/// the dark color (currently ambient) for lighting.
-		/// this is ignored when Lit is not present in FeatureMask (treated as Color4b.Default_Ambient when so)
+		/// the ambient LIGHTING color. A is ignored.
 		/// </summary>
-		public Color4b DarkColor;
+		public Color4b Ambient;
+
+		public GraphicsLight Light1;
+		public GraphicsLight Light2;
+		public GraphicsLight Light3;
+		public GraphicsLight Light4;
+		public GraphicsLight Light5;
+		public GraphicsLight Light6;
+		public GraphicsLight Light7;
+
 		/// <summary>
 		/// the fog color.
 		/// this is ignored when Fog is not present in FeatureMask.
@@ -440,8 +572,8 @@ namespace Quad64
 		public static GraphicsState Default => new GraphicsState
 		{
 			Color = { Value = uint.MaxValue, },
-			LightColor = Color4b.Default_Diffuse,
-			DarkColor = Color4b.Default_Ambient,
+			Diffuse = Color4b.Default_Diffuse,
+			Ambient = Color4b.White,
 			Fog = Color4b.ClearWhite,
 		};
 
@@ -459,15 +591,15 @@ namespace Quad64
 		private const uint CompileTestSumBitsGreaterEqual32 = 32 - SumBits;
 
 		private const int FeatureMaskShift = (32 - FeatureMaskUtility.BitSize);
-		private const int LightModeShift = FeatureMaskShift - 1;
+		private const int VertexColorShift = FeatureMaskShift - 1;
 
-		private const int ElementMaskShift = LightModeShift - ElementMaskUtility.BitSize;
+		private const int ElementMaskShift = VertexColorShift - ElementMaskUtility.BitSize;
 		private const int CullingShift = ElementMaskShift - CullingUtility.BitSize;
 
 		private const int TexturePresentationShift = CullingShift - TexturePresentationUtility.BitSize;
-		private const int VertexColorShift = TexturePresentationShift - VertexColorUtility.BitSize;
+		private const int LightModeShift = TexturePresentationShift - VertexColorUtility.BitSize;
 
-		private const int IndexPrimitiveShift = VertexColorShift - IndexPrimitiveUtility.BitSize;
+		private const int IndexPrimitiveShift = LightModeShift - IndexPrimitiveUtility.BitSize;
 		private const int IndexIntegerShift = IndexPrimitiveShift - IndexIntegerUtility.BitSize;
 
 		public int HashComponentRoot => unchecked( 5 * 
@@ -510,18 +642,37 @@ namespace Quad64
 				ROT15(
 					0 == (this.FeatureMask & FeatureMask.Fog) ?
 					unchecked((int)Color.Value) :
-					unchecked((int)(Color.Value+Fog.Value)^((int)FogOffset<<16|(int)FogMultiplier))) :
+					unchecked((int)(Color.Value + Fog.Value)^((int)FogOffset << 16|(int)FogMultiplier))) :
 				ROT17(0 == (this.FeatureMask & FeatureMask.Fog) ?
-				unchecked((int)(LightColor.Value + DarkColor.Value)) :
-				unchecked((int)(LightColor.Value + DarkColor.Value + Fog.Value) ^ ((int)FogOffset << 16 | (int)FogMultiplier)));
-		
+				unchecked((int)(Diffuse.Value)) :
+				unchecked((int)(Diffuse.Value + Fog.Value) ^ ((int)FogOffset << 16 | (int)FogMultiplier)));
+		public int HashComponentLights =>
+			(0 == (this.FeatureMask & FeatureMask.Lit) || 0 == ((byte)
+			(LightModeUtility.Mask & this.LightMode) >> 1)) ? 0 :
+			(
+				(((int)Ambient.R << 24) | ((int)Ambient.G << 16) | ((int)Ambient.B << 8) / 5) ^
+				GraphicsLight.GetHashCode(ref Light1) ^
+				(1 == ((byte)(LightModeUtility.Mask & this.LightMode) >> 1) ? 0 :
+				(GraphicsLight.GetHashCode(ref Light2, 3) ^
+				(2 == ((byte)(LightModeUtility.Mask & this.LightMode) >> 1) ? 0 :
+				(GraphicsLight.GetHashCode(ref Light3, 6) ^
+				(3 == ((byte)(LightModeUtility.Mask & this.LightMode) >> 1) ? 0 :
+				(GraphicsLight.GetHashCode(ref Light4, 9) ^
+				(4 == ((byte)(LightModeUtility.Mask & this.LightMode) >> 1) ? 0 :
+				(GraphicsLight.GetHashCode(ref Light5, 12) ^
+				(5 == ((byte)(LightModeUtility.Mask & this.LightMode) >> 1) ? 0 :
+				(GraphicsLight.GetHashCode(ref Light6, 15) ^
+				(6 == ((byte)(LightModeUtility.Mask & this.LightMode) >> 1) ? 0 :
+				(GraphicsLight.GetHashCode(ref Light7, 18))))))))))))));
+
 		public static int GetHashCode(ref GraphicsState A)
 		{
 			return A.HashComponentRoot ^
 				A.HashComponentTexture ^
 				A.HashComponentVertex ^
 				A.HashComponentIndex ^
-				A.HashComponentMaterial;
+				A.HashComponentMaterial ^
+				A.HashComponentLights;
 		}
 		public override int GetHashCode()
 		{
@@ -529,7 +680,8 @@ namespace Quad64
 				HashComponentTexture ^
 				HashComponentVertex ^
 				HashComponentIndex ^
-				HashComponentMaterial;
+				HashComponentMaterial ^
+				HashComponentLights;
 		}
 		public static bool Equals(ref GraphicsState A, ref GraphicsState B)
 		{
@@ -545,8 +697,26 @@ namespace Quad64
 				(0 == (A.ElementMask & ElementMask.Texture) || A.Texture == B.Texture) &&
 				(0 == (A.FeatureMask & FeatureMask.Lit) || 
 				(A.LightMode == B.LightMode &&
-					A.LightColor.Value == B.LightColor.Value &&
-					A.DarkColor.Value == B.DarkColor.Value)) &&
+					A.Diffuse.Value == B.Diffuse.Value &&
+					A.Ambient.R == B.Ambient.R &&
+					A.Ambient.G == B.Ambient.G &&
+					A.Ambient.B == B.Ambient.B &&
+					(((byte)(A.LightMode&LightModeUtility.Mask)>>1)==0|| (
+						GraphicsLight.Equals(ref A.Light1, ref B.Light1) &&
+						(((byte)(A.LightMode & LightModeUtility.Mask) >> 1) == 1 ||(
+							GraphicsLight.Equals(ref A.Light2, ref B.Light2) &&
+							(((byte)(A.LightMode & LightModeUtility.Mask) >> 1)==2||(
+								GraphicsLight.Equals(ref A.Light3, ref B.Light3) &&
+								(((byte)(A.LightMode & LightModeUtility.Mask) >> 1) == 3 || (
+									GraphicsLight.Equals(ref A.Light4, ref B.Light4) &&
+								(((byte)(A.LightMode & LightModeUtility.Mask) >> 1) == 4 || (
+									GraphicsLight.Equals(ref A.Light5, ref B.Light5) &&
+								(((byte)(A.LightMode & LightModeUtility.Mask) >> 1) == 5 || (
+									GraphicsLight.Equals(ref A.Light6, ref B.Light6) &&
+								(((byte)(A.LightMode & LightModeUtility.Mask) >> 1) == 6 ||
+									GraphicsLight.Equals(ref A.Light7, ref B.Light7) ))))))))))))
+							)
+						)) &&
 				(0 == (A.ElementMask & (ElementMask.Position | ElementMask.Normal | ElementMask.Color | ElementMask.Texcoord)) ||
 					A.Vertex == B.Vertex) &&
 				(0 == (A.ElementMask & ElementMask.Index) ||
@@ -623,8 +793,8 @@ namespace Quad64
 
 			if(0 == (GraphicsState.FeatureMask & FeatureMask.Lit))
 			{
-				GraphicsState.LightColor = Color4b.Default_Diffuse;
-				GraphicsState.DarkColor = Color4b.Default_Ambient;
+				GraphicsState.Diffuse = Color4b.Default_Diffuse;
+				GraphicsState.Ambient = Color4b.Default_Ambient;
 			}
 		}
 		/// <summary>
@@ -661,13 +831,46 @@ namespace Quad64
 			Target = this;
 			return Sanitize(ref Target);
 		}
+		public static void Copy([In] ref GraphicsState Source, out GraphicsState Target)
+		{
+			Target.Color = Source.Color;
+			Target.Diffuse = Source.Diffuse;
+			Target.Ambient = Source.Ambient;
+			Target.ElementMask = Source.ElementMask;
+			Target.Culling = Source.Culling;
+			Target.FeatureMask = Source.FeatureMask;
+			Target.Fog = Source.Fog;
+			Target.FogMultiplier = Source.FogMultiplier;
+			Target.FogOffset = Source.FogOffset;
+			Target.Index = Source.Index;
+			Target.IndexCount = Source.IndexCount;
+			Target.IndexInteger = Source.IndexInteger;
+			Target.IndexPrimitive = Source.IndexPrimitive;
+			Target.LightMode = Source.LightMode;
+			Target.Texture = Source.Texture;
+			Target.TextureHeight = Source.TextureHeight;
+			Target.TexturePresentation = Source.TexturePresentation;
+			Target.TextureScaleX = Source.TextureScaleX;
+			Target.TextureScaleY = Source.TextureScaleY;
+			Target.TextureWidth = Source.TextureWidth;
+			Target.Vertex = Source.Vertex;
+			Target.VertexColor = Source.VertexColor;
+			Target.Ambient = Source.Ambient;
+			Target.Light1 = Source.Light1;
+			Target.Light2 = Source.Light2;
+			Target.Light3 = Source.Light3;
+			Target.Light4 = Source.Light4;
+			Target.Light5 = Source.Light5;
+			Target.Light6 = Source.Light6;
+			Target.Light7 = Source.Light7;
+		}
 		/// <summary>
 		/// DOES NOT MODIFY Source!
 		/// Copies Source to Target, then returns Sanitize(ref Target).
 		/// </summary>
 		public static ElementMask CopyToSanitize([In]ref GraphicsState Source, out GraphicsState Target)
 		{
-			Target = Source;
+			Copy(ref Source, out Target);
 			return Sanitize(ref Target);
 		}
 	}
@@ -683,6 +886,13 @@ namespace Quad64
 	public sealed class GraphicsInterface : GraphicsStateWrapper
 	{
 		public GraphicsState State;
+
+		public Transform Camera = Transform.Identity;
+		public Transform Model = Transform.Identity;
+
+		public Matrix4 View = Matrix4.Identity;
+		public Matrix4 Proj = Matrix4.Identity;
+		public Matrix4 ViewProj = Matrix4.Identity;
 
 		/// <summary>
 		/// far and near planes (used for fog calculation only).
@@ -711,6 +921,22 @@ namespace Quad64
 		private const Toggle False = 0;
 		private const Toggle TurnedOn = True|Changed;
 		private const Toggle TurnedOff = False|Changed;
+
+		private const LightName LightName1 = LightName.Light0;
+		private const LightName LightName2 = (LightName)((int)LightName1+1);
+		private const LightName LightName3 = (LightName)((int)LightName1+2);
+		private const LightName LightName4 = (LightName)((int)LightName1+3);
+		private const LightName LightName5 = (LightName)((int)LightName1+4);
+		private const LightName LightName6 = (LightName)((int)LightName1+5);
+		private const LightName LightName7 = (LightName)((int)LightName1+6);
+
+		private const EnableCap LightCap1 = EnableCap.Light0;
+		private const EnableCap LightCap2 = (EnableCap)((int)LightCap1 + 1);
+		private const EnableCap LightCap3 = (EnableCap)((int)LightCap1 + 2);
+		private const EnableCap LightCap4 = (EnableCap)((int)LightCap1 + 3);
+		private const EnableCap LightCap5 = (EnableCap)((int)LightCap1 + 4);
+		private const EnableCap LightCap6 = (EnableCap)((int)LightCap1 + 5);
+		private const EnableCap LightCap7 = (EnableCap)((int)LightCap1 + 6);
 
 		private static Toggle ToggleBit(ref GraphicsState Target, ref GraphicsState Current,
 			FeatureMask Bit)
@@ -791,6 +1017,31 @@ namespace Quad64
 			}
 			return O;
 		}
+		private static void LightToggle(
+			ref GraphicsLight Target,
+			ref GraphicsLight Bound,
+			LightName LightName,
+			Toggle ForceToggle)
+		{
+			if(0!=(Changed & (ColorToggle(ref Target.Color,ref Bound.Color) | ForceToggle)))
+				Bound.Color.GL_LoadLight(LightColor, LightName);
+
+			if (0 != (ForceToggle & Changed) ||
+				(Target.Normal.X != Bound.Normal.X ||
+				Target.Normal.Y != Bound.Normal.Y ||
+				Target.Normal.Z != Bound.Normal.Z))
+			{
+				Bound.Normal = Target.Normal;
+
+				var Restore = GL.GetInteger(GetPName.MatrixMode);
+				GL.MatrixMode(MatrixMode.Modelview);
+				GL.PushMatrix();
+				GL.LoadIdentity();
+				GL.Light(LightName, LightParameter.Position, new Vector4(Bound.Normal.X, Bound.Normal.Y, Bound.Normal.Z, 0f).Normalized());
+				GL.PopMatrix();
+				GL.MatrixMode((MatrixMode)Restore);
+			}
+		}
 
 		private static readonly IntPtr
 			PositionOffset = (IntPtr)0,
@@ -851,31 +1102,142 @@ namespace Quad64
 					GL.Fog(FogParameter.FogMode, (int)FogMode.Linear);
 				}
 			}
-
-			Tog = ColorToggle(ref Target.DarkColor, ref Bound.DarkColor)
-				|ForceToggle;
-
-			if (0 != (Tog & Changed))
-				Bound.DarkColor.GL_LoadMaterial(MaterialParameter: MaterialParameter.Ambient);
-
-			Tog = ColorToggle(ref Target.LightColor, ref Bound.LightColor)
-				|ForceToggle;
-
-			if (0 != (Tog & Changed))
-				Bound.LightColor.GL_LoadMaterial(MaterialParameter: MaterialParameter.Diffuse);
 			
 
 			Cap(EnableCap.Lighting,
 				Tog = ToggleBit(ref Target, ref Bound, FeatureMask.Lit) | ForceToggle);
 
-			if (0 != (Tog & True) &&
-				(0 != (ForceToggle & Changed) ||
-					Bound.LightMode != Target.LightMode))
+			if (0 != (Tog & True))
 			{
-				Bound.LightMode = Target.LightMode;
-				GL.ShadeModel(
-					Bound.LightMode == LightMode.Smooth ?
-					ShadingModel.Smooth : ShadingModel.Flat);
+				if ((0 != (ForceToggle & Changed)) ||
+					((LightMode.Smooth0 & Bound.LightMode) != (LightMode.Smooth0 & Target.LightMode))
+					)
+				{
+					if (0 == (Target.LightMode & LightMode.Smooth0))
+						Bound.LightMode &= ~LightMode.Smooth0;
+					else
+						Bound.LightMode |= LightMode.Smooth0;
+					GL.ShadeModel(
+						0 == (Bound.LightMode & LightMode.Smooth0) ?
+						ShadingModel.Flat : ShadingModel.Smooth);
+				}
+
+				Tog = ColorToggle(ref Target.Ambient, ref Bound.Ambient)
+					| ForceToggle;
+
+				if (0 != (Tog & Changed))
+					Bound.Ambient.GL_LoadMaterial(MaterialParameter: MaterialParameter.Ambient);
+
+				Tog = ColorToggle(ref Target.Diffuse, ref Bound.Diffuse)
+					| ForceToggle;
+
+				if (0 != (Tog & Changed))
+					Bound.Diffuse.GL_LoadMaterial(MaterialParameter: MaterialParameter.Diffuse);
+
+
+				Restore = Target.LightMode.LightCount();
+
+				if (0 != (ForceToggle & Changed))
+				{
+					Bound.LightMode = Target.LightMode;
+					if(Restore == 0)
+					{
+						GL.Disable(LightCap1);
+						GL.Disable(LightCap2);
+						GL.Disable(LightCap3);
+						GL.Disable(LightCap4);
+						GL.Disable(LightCap5);
+						GL.Disable(LightCap6);
+						GL.Disable(LightCap7);
+					}
+					else
+					{
+						GL.Enable(LightCap1);
+						if (Restore == 1)
+						{
+							GL.Disable(LightCap2);
+							GL.Disable(LightCap3);
+							GL.Disable(LightCap4);
+							GL.Disable(LightCap5);
+							GL.Disable(LightCap6);
+							GL.Disable(LightCap7);
+						}
+						else
+						{
+							GL.Enable(LightCap2);
+							if (Restore == 2)
+							{
+								GL.Disable(LightCap3);
+								GL.Disable(LightCap4);
+								GL.Disable(LightCap5);
+								GL.Disable(LightCap6);
+								GL.Disable(LightCap7);
+							}
+							else
+							{
+								GL.Enable(LightCap3);
+								if (Restore == 3)
+								{
+									GL.Disable(LightCap4);
+									GL.Disable(LightCap5);
+									GL.Disable(LightCap6);
+									GL.Disable(LightCap7);
+								}
+								else
+								{
+									GL.Enable(LightCap4);
+									if (Restore == 4)
+									{
+										GL.Disable(LightCap5);
+										GL.Disable(LightCap6);
+										GL.Disable(LightCap7);
+									}
+									else
+									{
+										GL.Enable(LightCap5);
+										if (Restore == 5)
+										{
+											GL.Disable(LightCap6);
+											GL.Disable(LightCap7);
+										}
+										else
+										{
+											GL.Enable(LightCap6);
+											if (Restore == 6)
+												GL.Disable(LightCap7);
+											else
+												GL.Enable(LightCap7);
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				else if (Bound.LightMode < Target.LightMode)
+				{
+					do
+					{
+						GL.Enable((EnableCap)((int)LightCap1 + (((byte)Bound.LightMode) >> 1)));
+						Bound.LightMode = (LightMode)((byte)Bound.LightMode + 2);
+					} while (Bound.LightMode < Target.LightMode);
+				}
+				else if (Bound.LightMode > Target.LightMode)
+				{
+					do
+					{
+						GL.Disable((EnableCap)((int)LightCap1 + (((byte)Bound.LightMode) >> 1)));
+						Bound.LightMode = (LightMode)((byte)Bound.LightMode - 2);
+					} while (Bound.LightMode > Target.LightMode);
+				}
+
+				if (Restore > 0) LightToggle(ref Target.Light1, ref Bound.Light1, LightName1, ForceToggle);
+				if (Restore > 1) LightToggle(ref Target.Light2, ref Bound.Light2, LightName2, ForceToggle);
+				if (Restore > 2) LightToggle(ref Target.Light3, ref Bound.Light3, LightName3, ForceToggle);
+				if (Restore > 3) LightToggle(ref Target.Light4, ref Bound.Light4, LightName4, ForceToggle);
+				if (Restore > 4) LightToggle(ref Target.Light5, ref Bound.Light5, LightName5, ForceToggle);
+				if (Restore > 5) LightToggle(ref Target.Light6, ref Bound.Light6, LightName6, ForceToggle);
+				if (Restore > 6) LightToggle(ref Target.Light7, ref Bound.Light7, LightName7, ForceToggle);
 			}
 
 			Cap(EnableCap.CullFace, 
@@ -1004,12 +1366,15 @@ namespace Quad64
 			if (TurnedOn == Tog)
 			{
 				GL.NormalPointer(NormalPointerType.Byte, 16, NormalOffset);
-			//	GL.Disable(EnableCap.AutoNormal);
+				GL.Disable(EnableCap.AutoNormal);
+				GL.Enable(EnableCap.RescaleNormal);
 			}
 			else if (TurnedOff == Tog)
 			{
-			//	GL.Enable(EnableCap.AutoNormal);
+				GL.Enable(EnableCap.AutoNormal);
+				GL.Disable(EnableCap.RescaleNormal);
 			}
+
 
 			/*
 			if (0 == (Tog & True))
@@ -1052,20 +1417,69 @@ namespace Quad64
 			}
 
 		}
-
-		public static void Redraw(this GraphicsInterface GraphicsInterface)
+		private static Vector4 LightDir(ref Quaternion q, ref Vector4c n)
 		{
+			return new Vector4((q*new Vector3(n.X, n.Y, n.Z)).Normalized(), 0f);
+		}
+		public static void Redraw(
+			this GraphicsInterface GraphicsInterface
+			)
+		{
+			int LightNumber;
+
 			using (new ContextLock(GraphicsInterface.GLContext))
 			{
+				
 				if ((ElementMask.Index | ElementMask.Position) ==
 				(GraphicsInterface.MutableBoundState.ElementMask & (ElementMask.Index | ElementMask.Position))
 				&& GraphicsInterface.MutableBoundState.IndexCount != 0)
+				{/*
+					GL.GetFloat(GetPName.ModelviewMatrix, out Matrix4 mv);
+					var Q = (GraphicsInterface.Camera.rotation * mv.ExtractRotation().Normalized()) * 
+						GraphicsInterface.Camera.rotation;
+
+					if (0 != (GraphicsInterface.MutableBoundState.FeatureMask & FeatureMask.Lit) &&
+						0 != (LightNumber = ((byte)(GraphicsInterface.MutableBoundState.LightMode & LightModeUtility.Mask) >> 1)))
+					{
+						do
+						{
+							GL.Light(LightName1, LightParameter.Position, LightDir(ref Q,ref
+									GraphicsInterface.MutableBoundState.Light1.Normal
+									));
+							if (0 == --LightNumber) break;
+							GL.Light(LightName2, LightParameter.Position, LightDir(ref Q, ref
+									GraphicsInterface.MutableBoundState.Light3.Normal
+									));
+							if (0 == --LightNumber) break;
+							GL.Light(LightName3, LightParameter.Position, LightDir(ref Q, ref
+									GraphicsInterface.MutableBoundState.Light3.Normal
+									));
+							if (0 == --LightNumber) break;
+							GL.Light(LightName4, LightParameter.Position, LightDir(ref Q, ref
+									GraphicsInterface.MutableBoundState.Light4.Normal
+									));
+							if (0 == --LightNumber) break;
+							GL.Light(LightName5, LightParameter.Position, LightDir(ref Q, ref
+									GraphicsInterface.MutableBoundState.Light5.Normal
+									));
+							if (0 == --LightNumber) break;
+							GL.Light(LightName6, LightParameter.Position, LightDir(ref Q, ref
+									GraphicsInterface.MutableBoundState.Light6.Normal
+									));
+							if (0 == --LightNumber) break;
+							GL.Light(LightName7, LightParameter.Position, LightDir(ref Q, ref
+									GraphicsInterface.MutableBoundState.Light7.Normal
+									));
+						} while (false);
+					}
+					*/
 					GL.DrawElements(
 						GraphicsInterface.MutableBoundState.IndexPrimitive.ToGL(),
 						GraphicsInterface.MutableBoundState.IndexCount,
 						GraphicsInterface.MutableBoundState.IndexInteger == IndexInteger.Byte ? DrawElementsType.UnsignedByte
 						: GraphicsInterface.MutableBoundState.IndexInteger == IndexInteger.Short ? DrawElementsType.UnsignedShort
 						: DrawElementsType.UnsignedInt, IntPtr.Zero);
+				}
 			}
 		}
 		public static void Bind(
@@ -1132,7 +1546,86 @@ namespace Quad64
 		}
 		public static void GetFromGL(out LightMode Value)
 		{
-			Value = GL.GetBoolean(GetPName.PolygonSmooth) ? LightMode.Smooth : LightMode.Hard;
+			if (GL.GetBoolean(GetPName.Light0))
+			{
+				if (GL.GetBoolean(GetPName.Light1))
+				{
+					if (GL.GetBoolean(GetPName.Light2))
+					{
+						if (GL.GetBoolean(GetPName.Light3))
+						{
+							if (GL.GetBoolean(GetPName.Light4))
+							{
+								if (GL.GetBoolean(GetPName.Light5))
+								{
+									if (GL.GetBoolean(GetPName.Light6))
+									{
+										Value = LightMode.Hard7;
+									}
+									else
+									{
+										Value = LightMode.Hard6;
+									}
+								}
+								else
+								{
+									Value = LightMode.Hard5;
+								}
+							}
+							else
+							{
+								Value = LightMode.Hard4;
+							}
+						}
+						else
+						{
+							Value = LightMode.Hard3;
+						}
+					}
+					else
+					{
+						Value = LightMode.Hard2;
+					}
+				}
+				else
+				{
+					Value = LightMode.Hard1;
+				}
+			}
+			else
+			{
+				Value = LightMode.Hard0;
+			}
+
+			if (GL.GetInteger(GetPName.ShadeModel) == (int)ShadingModel.Smooth )
+				Value |= LightMode.Smooth0;
+		}
+		public const LightParameter LightColor = LightParameter.Diffuse;
+		public const LightParameter LightAmbientColor = LightParameter.Ambient;
+
+		public unsafe static void GetFromGL(out GraphicsLight Light, int Index)
+		{
+			Light.Value = 0;
+
+			float* f = stackalloc float[4];
+
+			GL.GetLight((LightName)((int)LightName.Light0 + Index), LightColor, f);
+			Light.Color = new Color4b { r = f[0], g = f[1], b = f[2], A = 255, };
+
+			GL.GetLight((LightName)((int)LightName.Light0 + Index), LightParameter.Position, f);
+			Light.Normal = new Vector4c
+			{
+				X = ByteUtility.FloatToNormal(f[0]),
+				Y = ByteUtility.FloatToNormal(f[1]),
+				Z = ByteUtility.FloatToNormal(f[2]),
+				W = 0,
+			};
+		}
+		public unsafe static void GetFromGL(out Color4b LightAmbient, int Index)
+		{
+			float* f = stackalloc float[4];
+			GL.GetLight((LightName)((int)LightName.Light0 + Index), LightAmbientColor, f);
+			LightAmbient = new Color4b { r = f[0], g = f[1], b = f[2], A = 255, };
 		}
 		public static void GetFromGL(out TexturePresentation Value)
 		{
@@ -1183,26 +1676,34 @@ namespace Quad64
 			GetFromGL(out State.VertexColor);
 			GetFromGL(out State.TexturePresentation);
 			GetFromGL(out State.LightMode);
+			GetFromGL(out State.Light1, 0);
+			GetFromGL(out State.Light2, 1);
+			GetFromGL(out State.Light3, 2);
+			GetFromGL(out State.Light4, 3);
+			GetFromGL(out State.Light5, 4);
+			GetFromGL(out State.Light6, 5);
+			GetFromGL(out State.Light7, 6);
+			GetFromGL(out State.Ambient, 0);
 			GraphicsState.Sanitize(ref State);
 
 			{
 				GL.GetFloat(GetPName.CurrentColor, out Vector4 c);
-				State.LightColor.r = c.X;
-				State.LightColor.g = c.Y;
-				State.LightColor.b = c.Z;
-				State.LightColor.a = c.W;
+				State.Diffuse.r = c.X;
+				State.Diffuse.g = c.Y;
+				State.Diffuse.b = c.Z;
+				State.Diffuse.a = c.W;
 			}
 			GL.GetMaterial(MaterialFace.Front, MaterialParameter.Ambient, C);
-			State.LightColor.r = C[0];
-			State.LightColor.g = C[1];
-			State.LightColor.b = C[2];
-			State.LightColor.a = C[3];
+			State.Diffuse.r = C[0];
+			State.Diffuse.g = C[1];
+			State.Diffuse.b = C[2];
+			State.Diffuse.a = C[3];
 
 			GL.GetMaterial(MaterialFace.Front, MaterialParameter.Diffuse, C);
-			State.LightColor.r = C[0];
-			State.LightColor.g = C[1];
-			State.LightColor.b = C[2];
-			State.LightColor.a = C[3];
+			State.Diffuse.r = C[0];
+			State.Diffuse.g = C[1];
+			State.Diffuse.b = C[2];
+			State.Diffuse.a = C[3];
 
 			{
 				GL.GetFloat(GetPName.FogColor, out Vector4 c);

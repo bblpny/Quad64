@@ -27,6 +27,9 @@ namespace Quad64.Scripts
 		new private sealed partial class Runtime : Script.Runtime.Impl<Runtime>
 		{
 			public readonly Level lvl;
+#if !NO_LEVEL_MAT
+			public Material material;
+#endif
 
 			public Runtime(Level level) : base(Instance, level.rom)
 			{
@@ -35,13 +38,26 @@ namespace Quad64.Scripts
 
 			public Runtime(Runtime copy) : base(copy)
 			{
+#if !NO_LEVEL_MAT
+				this.material = copy.material;
+#endif
 				this.lvl = copy.lvl;
 			}
 
 			public Runtime(Runtime copy, SegmentOffset segOff) : this(copy)
 			{
 				SetSegment(this, segOff);
-			}			
+			}
+			private static byte JumpEvaluate( Runtime originator, Runtime rt)
+			{
+#if !NO_LEVEL_MAT
+				var ret = Evaluate(rt);
+				originator.material = rt.material;
+				return ret;
+#else
+				return Evaluate(rt);
+#endif
+			}
 		}
 		
 		protected sealed override CommandInfo GetCommandInfo(byte AA)
@@ -66,6 +82,7 @@ namespace Quad64.Scripts
 				case 0x26: Command = Runtime.CMD_26; break;
 				case 0x27: Command = Runtime.CMD_27; break;
 				case 0x28: Command = Runtime.CMD_28; break;
+				case 0x2B: Command = Runtime.CMD_2B; break;
 				case 0x2E: Command = Runtime.CMD_2E; break;
 				case 0x39: Command = Runtime.CMD_39; break;
 				default:
@@ -80,13 +97,29 @@ namespace Quad64.Scripts
 
 		public static byte Parse(
 			Level lvl,
+#if !NO_LEVEL_MAT
+			ref Material material,
+#endif
 			SegmentOffset segOff)
 		{
-			var rt = new Runtime(lvl);
+			var rt = new Runtime(lvl)
+#if !NO_LEVEL_MAT
+			{ material = material, }
+#endif
+			;
 			Runtime.SetSegment(rt, segOff);
 			var ret = Runtime.Evaluate(rt);
 			return ret;
 		}
+#if !NO_LEVEL_MAT
+		public static byte Parse(
+			Level lvl,
+			SegmentOffset segOff)
+		{
+			Material mat = Material.Default;
+			return Parse(lvl, ref mat, segOff);
+		}
+#endif
 
 		partial class Runtime
 		{
@@ -101,7 +134,7 @@ namespace Quad64.Scripts
 				uint end = bytesToUInt32(cmd, 8);
 				rt.rom.setSegment(segOff.Segment, start, end, false);
 				if (segOff.Segment == 0x14) return;
-				Evaluate(new Runtime(rt, segOff));
+				JumpEvaluate(rt, new Runtime(rt, segOff));
 			}
 			static public void CMD_01(Runtime rt, ref ByteSegment cmd)
 			{
@@ -121,15 +154,13 @@ namespace Quad64.Scripts
 				}
 				else
 				{
-					var rt2 = new Runtime(rt, segOff);
-					Exit(rt, Evaluate(rt2));
+					Exit(rt, JumpEvaluate(rt, new Runtime(rt, segOff)));
 				}
 			}
 
 			static public void CMD_06(Runtime rt, ref ByteSegment cmd)
 			{
-				var rt2 = new Runtime(rt, bytesToSegmentOffset(cmd, 4));
-				if (0x02 == Evaluate(rt2))
+				if (0x02 == JumpEvaluate(rt, new Runtime(rt, bytesToSegmentOffset(cmd, 4))))
 					Exit(rt, 0x02);
 			}
 			static public void CMD_07(Runtime rt, ref ByteSegment cmd)
@@ -139,12 +170,8 @@ namespace Quad64.Scripts
 
 			static public void CMD_0C(Runtime rt, ref ByteSegment cmd)
 			{
-				Runtime rt2;
 				if (null != rt.lvl && bytesToInt32(cmd, 4) == rt.lvl.LevelID)
-				{
-					rt2 = new Runtime(rt, bytesToSegmentOffset(cmd, 8));
-					Evaluate(rt2);
-				}
+					JumpEvaluate(rt, new Runtime(rt, bytesToSegmentOffset(cmd, 8)));
 			}
 
 			static public void CMD_17(Runtime rt, ref ByteSegment cmd)
@@ -174,13 +201,16 @@ namespace Quad64.Scripts
 
 				Area newArea = new Area(areaID, segOff.Value, rt.lvl);
 				newArea.AreaModel.GeoDataSegAddress = segOff.Value;
-				GeoScripts.Parse(newArea, segOff);
+				GeoScripts.Parse(newArea,
+#if !NO_LEVEL_MAT
+					ref rt.material,
+#endif
+					segOff);
 				rt.lvl.Areas.Add(newArea);
 				rt.lvl.CurrentAreaID = areaID;
 				newArea.AreaModel.buildBuffers();
 				// newArea.AreaModel.outputTextureAtlasToPng("Area_"+areaID+"_TexAtlus.png");
 			}
-
 			static public void CMD_21(Runtime rt, ref ByteSegment cmd)
 			{
 				byte modelID = cmd[3];
@@ -189,20 +219,32 @@ namespace Quad64.Scripts
 				Model3D newModel = new Model3D();
 				newModel.GeoDataSegAddress = segOff.Value;
 				rt.lvl.AddObjectCombos(modelID, newModel.GeoDataSegAddress);
-
 				if (rt.rom.hasSegment(segOff.Segment))
-					Fast3DScripts.Parse(
-						newModel,
-						rt.lvl, 
+				{
+					GeoModel model;
+					// hackily make a geo node, since i've broke non-geo node rendering.
+					using (ModelBuilder.NodeBinder.Bind(
+						newModel.builder,
+						model = (new GeoNode((newModel.root = new GeoRoot(newModel))) {
+						}).StartModel()))
+						Fast3DScripts.Parse(
+							newModel,
+							rt.lvl,
+#if !NO_LEVEL_MAT
+						ref rt.material,
+#endif
 						segOff,
-						(byte)(cmd[2]>>4)
-						);
-
+							(byte)(cmd[2] >> 4)
+							);
+					model.Build();
+					newModel.root.Bind();
+				}
 				//if (lvl.ModelIDs.ContainsKey(modelID))
 				//	lvl.ModelIDs.Remove(modelID);
 				rt.lvl.ModelIDs.Remove(modelID);
 				newModel.buildBuffers();
 				rt.lvl.ModelIDs.Add(modelID, newModel);
+				Console.WriteLine("Fast3D:" + modelID + ":" + newModel.meshes[0].indices.Length);
 			}
 			static public void CMD_22(Runtime rt, ref ByteSegment cmd)
 			{
@@ -213,7 +255,11 @@ namespace Quad64.Scripts
 				newModel.GeoDataSegAddress = segOff.Value;
 				rt.lvl.AddObjectCombos(modelID, newModel.GeoDataSegAddress);
 				if (rt.rom.hasSegment(segOff.Segment))
-					GeoScripts.Parse(newModel, rt.lvl, segOff);
+					GeoScripts.Parse(newModel, rt.lvl,
+#if !NO_LEVEL_MAT
+						ref rt.material,
+#endif
+						segOff);
 				//if (lvl.ModelIDs.ContainsKey(modelID))
 				//	lvl.ModelIDs.Remove(modelID);
 				rt.lvl.ModelIDs.Remove(modelID);
@@ -314,6 +360,22 @@ namespace Quad64.Scripts
 				warp.AreaID = cmd[3];
 				warp.Tele = bytesToVector3s(cmd, 4);
 				rt.lvl.getCurrentArea().InstantWarps.Add(warp);
+			}
+			static public void CMD_2B(Runtime rt, ref ByteSegment cmd) {
+				var area = cmd[2];
+				foreach (var levelArea in rt.lvl.Areas)
+					if (area == levelArea.AreaID)
+					{
+						System.Array.Resize(ref levelArea.startPoints, null == levelArea.startPoints ? 1 : (levelArea.startPoints.Length + 1));
+
+						levelArea.startPoints[levelArea.startPoints.Length - 1] = new TransformI
+						{
+							scale = { Whole = 1, },
+							rotation = { Y = bytesToInt16(cmd, 4), },
+							translation = bytesToVector3s(cmd, 6),
+						};
+						break;
+					}
 			}
 
 			/* Process collision map, Special Objects, and <S> water boxes </S>. */

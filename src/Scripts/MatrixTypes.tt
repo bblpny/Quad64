@@ -1,0 +1,524 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ output extension=".cs" #>
+using System.Runtime.InteropServices;
+using OpenTK;
+namespace Quad64 {
+<#
+	Structure[] VectorTypes = new Structure[5];
+
+	for(int i = 0; i < 4; ++i)
+	{
+		var Short = INT.U16;
+
+		if((i&1)!=0)Short=Short.SInt;
+
+		var Element = ((i&2)==0)?Short:VectorTypes[i&1];
+		var Word = Short.NextInt;
+		if(Word!=null)Word=Word.UInt;
+		VectorTypes[i] = new Structure(Pair(Flatten(new Member[]{
+			new Member{Name="X",Type=Element,Offset=0*Element.Size,},
+			new Member{Name="Y",Type=Element,Offset=1*Element.Size,},
+			new Member{Name="Z",Type=Element,Offset=2*Element.Size,},
+			new Member{Name="W",Type=Element,Offset=3*Element.Size,},
+		}), 0==(i&2)?
+			new Member[]{
+				new Member{Name="Value",Type=Short.NextInt.NextInt.UInt},
+			} : new Member[]{
+				new Member{Name="XX_XY", Type=Word, Offset=0*Word.Size,},
+				new Member{Name="XZ_XW", Type=Word, Offset=1*Word.Size,},
+				new Member{Name="YX_YY", Type=Word, Offset=2*Word.Size,},
+				new Member{Name="YZ_YW", Type=Word, Offset=3*Word.Size,},
+				new Member{Name="ZX_ZY", Type=Word, Offset=4*Word.Size,},
+				new Member{Name="ZZ_ZW", Type=Word, Offset=5*Word.Size,},
+				new Member{Name="WX_WY", Type=Word, Offset=6*Word.Size,},
+				new Member{Name="WZ_WW", Type=Word, Offset=7*Word.Size,},
+			}
+		)){
+			Name=(0==(i&2)?0==(i&1)?"Row4F":"Row4I":
+				0==(i&1)?"MtxF":"MtxI"),
+		};
+		if(0!=(i&2)){
+			for(int m = VectorTypes[i].Members.Length-1;m>=0;--m){
+				if(VectorTypes[i].Members[m].Name.EndsWith("Value"))
+					VectorTypes[i].Members[m].Name = VectorTypes[i].Members[m].Name.Remove(2);
+			}
+		}
+	}
+
+	VectorTypes[4] = new Structure(
+		Flatten( new Member[]{
+			new Member{ Name = "I", Type=VectorTypes[3], Offset=0, },
+			new Member{ Name = "F", Type=VectorTypes[2], Offset=VectorTypes[3].Size, },
+		},Join:"_",SwapJoin:true,Once:true)){
+		Name="Mtx",
+	};
+#>
+<#foreach(var Vector in VectorTypes){#>
+[StructLayout(LayoutKind.Explicit)]
+public partial struct <#=Vector#> : System.IEquatable<<#=Vector#>> {
+<#	foreach(var Field in Vector.Members){#>
+	[FieldOffset(0x<#=Field.Offset.ToString("X2")#>)] public <#=Field.Type#> <#=Field#>;
+<#	}#>
+<#	{
+		var EquateFields = new List<StructureMember>(Vector.FieldsOf(INT.U64)).ToArray();
+		for(int EqualityFunction=0;EqualityFunction < 2; EqualityFunction++){bool First=true;#>
+	public static bool <#
+		if(EqualityFunction==0){
+			#>Equals(ref <#=Vector#> L, ref <#=Vector#> R)<#
+		}else{
+			#>operator == (<#=Vector#> L, <#=Vector#> R)<#
+		}#>{
+		return <#
+		for(int i = 0; i < EquateFields.Length; ++i){
+			if(First)
+				First=false;
+			else{#> &&
+			<#}#>L.<#=EquateFields[i]#>==R.<# Write(EquateFields[i].Name);
+		}#>;
+	}
+	public static bool <# First=true;
+		if(EqualityFunction==0){
+			#>Inequals(ref <#=Vector#> L, ref <#=Vector#> R)<#
+		}else{
+			#>operator != (<#=Vector#> L, <#=Vector#> R)<#
+		}#>{
+		return <#
+		for(int i = 0; i < EquateFields.Length; ++i){
+			if(First)
+				First=false;
+			else{#> ||
+			<#}#>L.<#=EquateFields[i]#>!=R.<# Write(EquateFields[i].Name);
+		}#>;
+	}
+<#	}#>
+	public static int GetHashCode(ref <#=Vector#> Value){
+<#if(EquateFields.Length!=1){#>
+		uint Temp;
+		unchecked {
+<#}#>
+		return
+			Value.<#=EquateFields[0]#>.GetHashCode()<#
+	for(int i = 1; i < EquateFields.Length; ++i){#> ^
+			(int)(((((Temp=(uint)Value.<#=EquateFields[i]#>.GetHashCode()))<<<#=31&(i*5)#>))|(Temp>><#=31&(32-(i*5))#>))<#
+	}#>;
+<#if(EquateFields.Length!=1){#>
+		}
+<#}#>
+	}
+<# }#>
+	public bool Equals(<#=Vector#> other){return Equals(ref this, ref other);}
+	public bool Equals(ref <#=Vector#> other){return Equals(ref this, ref other);}
+	public override bool Equals(object obj){return obj is <#=Vector#> && ((<#=Vector#>)obj).Equals(ref this);}
+	public override int GetHashCode(){return GetHashCode(ref this);}
+<#foreach(var IndexType in new Structure[]{ INT.S16, INT.U16, INT.U32, INT.U64, VectorTypes[0],VectorTypes[1], }){#>
+<#	var Fields=new List<StructureMember>(Vector.FieldsOf(IndexType)).ToArray();#>
+<#	if(Fields.Length<=1){#>
+<#		continue;#>
+<#	}#>
+<#  string Id=IndexType==INT.S16?"Integer":IndexType==INT.U16?"Fraction":IndexType==INT.U64?"Block":IndexType==INT.U32?"Word":null;#>
+<#  Accessor(IndexType,Fields);#>
+<#}
+if(Vector==VectorTypes[4]){
+	string[][] XYNames = new string[][]{
+		new string[16],
+		new string[16],
+		new string[16],
+		new string[16],
+	};
+	string[] Ts = new string[]{"int","float","double"};
+	string[] Gets = new string[]{
+		"((int){0}_I<<16)|{0}_F",
+		"(int){0}_I+({0}_F/(float)(1<<16))",
+		"(int){0}_I+({0}_F/(double)(1<<16))",
+	};
+	string[] Sets = new string[]{
+		"{0}_I=(short)(value>>16);{0}_F=(ushort)(value&ushort.MaxValue);",
+		"var floor = System.Math.Floor(value);{0}_I=(short)floor;{0}_F=(ushort)((int)(value-floor)&ushort.MaxValue);",
+		"var floor = System.Math.Floor(value);{0}_I=(short)floor;{0}_F=(ushort)((int)(value-floor)&ushort.MaxValue);",
+	};
+	string[] Prefixes = new string[]{
+		"Fixed",
+		"Single",
+		"Double",
+	};
+	string[] Suffixes = new string[]{
+		string.Empty,
+		string.Empty,
+		string.Empty,
+	};
+	for(int i=0;i<16;i++){
+		string Y = (i&2)==0?(i&1)==0?"X":"Y":(i&1)==0?"Z":"W";
+		string X = (i&8)==0?(i&4)==0?"X":"Y":(i&4)==0?"Z":"W";
+		string XY=X+Y;
+		XYNames[3][i]=XY;
+		for(int j=0;j<3;j++){
+			XYNames[j][i]=string.Concat(Prefixes[j],XY,Suffixes[j]);
+		#>
+	public <#=Ts[j]#> <#=XYNames[j][i]#> { <#
+		#>get => <#=string.Format(Gets[j],XY)#>;<#
+		#>set { <#=string.Format(Sets[j],XY)#> } }
+<#		}
+	}
+	for(int i=0;i<Ts.Length;++i){
+		Accessor(Ts[i],XYNames[i],Id:Prefixes[i]);
+	}
+	
+	for(int Mult=0;Mult<3;Mult++){#>
+	public static <#if(Mult==1){#><#=Vector#><#}else{#>void<#}#> Multiply<#if(Mult==2){#>Update<#}#>(ref <#=Vector#> L, ref <#=Vector#> R<#if(Mult!=1){#>,<#if(Mult==2){#> ref<#}else{#> out<#}#> <#=Vector#> Result<#}#>){
+		int
+<#		
+		string[] L = new string[16], R = new string[16], O=new string[16];
+		for(int i=0;i<16;++i){
+			if(i!=0){#>,
+<#			}#>
+			<#=(L[i]="L"+XYNames[3][i])#>=<#=string.Format(Gets[0],"L."+XYNames[3][i])#>,<#=(R[i]="R"+XYNames[3][i])#>=<#=string.Format(Gets[0],"R."+XYNames[3][i])#>,<#=(O[i]="O"+XYNames[3][i])#><#
+		}#>;
+<#		for(int i=0;i<16;i++){
+			int X=(i>>2)<<2;
+			int Y=(i&3);
+			#>
+		<#=O[i]#>=(int)(((long)<#=L[X++]#> * <#=R[Y]#> +
+			(long)<#=L[X++]#> * <#=R[(Y+4)&15]#> +
+			(long)<#=L[X++]#> * <#=R[(Y+8)&15]#> +
+			(long)<#=L[X++]#> * <#=R[(Y+12)&15]#>)>>16);
+<#		}#>
+<#		if(Mult!=2){#>
+		<#if(Mult==1){#>return <#}else{#>Result = <#}#>new <#=Vector#>{
+<#		}#>
+<#		for(int i=0;i<16;i++){#>
+		<#if(Mult==2){#>Result.<#}#><#=XYNames[3][i]#>_F=(ushort)(<#=O[i]#>&ushort.MaxValue)<#
+		if(Mult!=2){#>,
+<#		}else{#>;
+<#		}#>
+		<#if(Mult==2){#>Result.<#}#><#=XYNames[3][i]#>_I=(short)(<#=O[i]#>>>16)<#
+		if(Mult!=2){#>,
+<#		}else{#>;
+<#		}
+		}if(Mult!=2){#>
+		};
+<#		}#>
+	}
+<#	}
+	for(int iConvert=1;iConvert<3;iConvert++){#>
+	public static void Convert([In]ref <#=Vector#> In, out Matrix4<#=iConvert==1?string.Empty:"d"#> Out){
+<#		for(int i=0;i<16;i++){
+			int X=(i>>2)<<2;
+			int Y=(i&3);
+			#>
+		Out.Row<#=(X>>2)#>.<#=Y==0?"X":Y==1?"Y":Y==2?"Z":"W"#>=<#=string.Format(Gets[iConvert],"In."+XYNames[3][i])#>;
+<#		}#>
+	}
+	public static void Convert([In]ref Matrix4<#=iConvert==1?string.Empty:"d"#> In, out <#=Vector#> Out){
+		Out = new <#=Vector#>{
+<#		for(int i=0;i<16;i++){
+			int X=(i>>2)<<2;
+			int Y=(i&3);
+			#>
+			<#=XYNames[iConvert][i]#>=In.Row<#=(X>>2)#>.<#=Y==0?"X":Y==1?"Y":Y==2?"Z":"W"#>,
+<#		}#>
+		};
+	}
+<#	}
+}#>
+}
+<#}#>
+}
+<#+
+public enum StructureFlags : byte {}
+const StructureFlags Integer = (StructureFlags)2;
+const StructureFlags Signed = (StructureFlags)1;
+
+private void Span(
+	System.Array Array,
+	bool Set){
+	int L=Array.Length;
+	for(int i = 32;i!=0;--i)
+		L|=(L>>i);
+	L= (int)(((uint)L+1u)>>2);
+	Span(Array,0,L,Set);
+}
+
+private void Span(
+	System.Array Array,
+	int Value,
+	int Bit,
+	bool Set){
+	if(Bit==0){
+		if(!Set){
+			#>this.<#=Array.GetValue(Value)#><#+
+		}else{
+			#>this.<#=Array.GetValue(Value)#>=Value;<#+
+		}
+	} else if(!Set){
+		#>(0==(<#=Bit#>&Index))?<#+
+			Span(Array,Value,Bit>>1,false);
+		#>:<#+
+			Span(Array,Value|Bit,Bit>>1,false);
+	} else {
+		#>if(0==(<#=Bit#>&Index))<#+
+			Span(Array,Value,Bit>>1,true);
+		#> else <#+
+			Span(Array,Value|Bit,Bit>>1,true);
+	}
+}
+
+public void Accessor(object IndexType, System.Array Fields, string Id=null, string Get=null, string Set=null){
+	if(null==(object)Get) Get = "Get"+(Id ?? string.Empty);
+	if(null==(object)Set) Set = "Set"+(Id ?? string.Empty);
+	
+	if(Get!="Get"){
+#>
+	public <#=IndexType#> <#=Get#>(int Index){
+		return <#+Span(Fields,false);#>;
+	}
+<#+ }#>
+	public void <#=Get#>(int Index, out <#=IndexType#> Value){
+		Value=<#+Span(Fields,false);#>;
+	}
+	public void <#=Set#>(int Index, <#=IndexType#> Value){
+		<#+Span(Fields,true);#>;
+	}
+	public void <#=Set#>(int Index, [In] ref <#=IndexType#> Value){
+		<#+Span(Fields,true);#>;
+	}
+<#+
+}
+
+public class Structure {
+	public string Name;
+	public int Size;
+	public Structure EquateType;
+
+	public StructureMember this[string Name]{
+		get{
+			for(int i = Members.Length-1;i>=0;--i)
+				if(Members[i].Name==Name)
+					return Members[i];
+			return null;
+		}
+	}
+	public IEnumerable<StructureMember> FieldsOf(Structure Type){
+		foreach(var item in Members)
+			if(item.Type==Type)
+				yield return item;
+	}
+	public int IntegerIndex {
+		get
+		{
+			int O = Size==1?0:Size==2?2:Size==4?4:Size==8?6:-1;
+			if(0!=(Flags & Signed) && -1 != O)
+				++O;
+
+			return O;
+		}
+	}
+	public Structure Int {
+		get {
+			var Index=IntegerIndex;
+			return 0>Index?null:INT.All[Index];
+		}
+	}
+	public Structure SInt {
+		get {
+			var Index=IntegerIndex;
+			return 0>Index?null:INT.All[Index|1];
+		}
+	}
+	public Structure UInt {
+		get {
+			var Index=IntegerIndex;
+			return 0>Index?null:INT.All[Index& (~1)];
+		}
+	}
+	public Structure NextInt {
+		get {
+			var IntegerIndex = this.IntegerIndex+2;
+			return (IntegerIndex >= 2 && IntegerIndex < 8) ? INT.All[IntegerIndex] : null;
+		}
+	}
+	public Structure PrevInt {
+		get {
+			var IntegerIndex = this.IntegerIndex-2;
+			return (IntegerIndex >= 0 && IntegerIndex < 6) ? INT.All[IntegerIndex] : null;
+		}
+	}
+	public StructureFlags Flags;
+	private static readonly StructureMember[] NoMembers = {};
+	public StructureMember[] Members = NoMembers;
+	public readonly bool IsSequential;
+	public readonly int SequentialAlignment;
+	public override string ToString(){return Name;}
+
+	public Structure() {}
+	public Structure(
+		IEnumerable<Member> Members,
+		bool Sequential=false,
+		int Alignment=0){
+		
+
+		this.IsSequential=Sequential;
+		this.SequentialAlignment = Sequential ? Alignment : 0;
+
+		if(null!=Members){
+			List<StructureMember> ListOfMembers = new List<StructureMember>();
+			Member Add;
+			using(var Enumerator = Members.GetEnumerator())
+				while(Enumerator.MoveNext())
+					if(null!=(Add=Enumerator.Current))
+						ListOfMembers.Add(new StructureMember(this,Add));
+
+			if(ListOfMembers.Count!=0)
+				this.Members = ListOfMembers.ToArray();
+		}
+
+		if(!Sequential){
+			foreach(var item in this.Members){
+				if((item.Offset + item.Type.Size) > Size)
+					Size = item.Offset + item.Type.Size;
+			}
+		}else if(Alignment>1){
+			ulong Add=((1uL<<(Alignment<<3))-1uL);
+			for(int Index=0;Index<this.Members.Length;++Index)
+				Size = ( this.Members[Index] = new StructureMember(this,this.Members[Index]) {
+					Name = this.Members[Index].Name,
+					Type = this.Members[Index].Type,
+					Offset = (int)(((((ulong)Size<<3)+Add) & ~Add) >> 3),
+				}).Offset + this.Members[Index].Size;
+		}else{
+			for(int Index=0;Index<this.Members.Length;++Index)
+				Size = ( this.Members[Index] = new StructureMember(this,this.Members[Index]) {
+					Name = this.Members[Index].Name,
+					Type = this.Members[Index].Type,
+					Offset = Size,
+				}).Offset + this.Members[Index].Size;
+		}
+	}
+}
+public class StructureMember : Member {
+	public Structure Outer;
+	public StructureMember(Structure Outer, Member Member){
+		this.Outer = Outer;
+		base.Offset = Member.Offset;
+		base.Name = Member.Name;
+		base.Type=Member.Type;
+	}
+}
+
+public class Member  {
+	public int Offset;
+	public string Name;
+	public Structure Type;
+	public int Size {get{return Type.Size;}}
+	public override string ToString(){return Name;}
+}
+public static class INT {
+	public static readonly Structure S8, U8, S16, U16, S32, U32, S64, U64;
+	public static readonly Structure[] All = new Structure[8];
+
+	private static void Register(params Structure[] Each){
+		foreach(var item in Each)
+			All[item.IntegerIndex]=item;
+	}
+	static INT(){
+		Register(
+			U8 = new Structure{
+				Name="byte",
+				Size=1,
+				Flags=Integer,
+			},
+			S8 = new Structure{
+				Name="sbyte",
+				Size=1,
+				Flags=Integer|Signed,
+			},
+			U16 = new Structure{
+				Name="ushort",
+				Size=2,
+				Flags=Integer,
+			},
+			S16 = new Structure{
+				Name="short",
+				Size=2,
+				Flags=Integer|Signed,
+			},
+			U32 = new Structure{
+				Name="uint",
+				Size=4,
+				Flags=Integer,
+			},
+			S32 = new Structure{
+				Name="int",
+				Size=4,
+				Flags=Integer|Signed,
+			},
+			U64 = new Structure{
+				Name="ulong",
+				Size=8,
+				Flags=Integer,
+			},
+			S64 = new Structure{
+				Name="long",
+				Size=8,
+				Flags=Integer|Signed,
+			});
+	}
+}
+public static IEnumerable<Member> ToMembers<T>(IEnumerable<T> Member) where T : Member {
+	if(null!=Member)
+		foreach(var item in Member)
+			yield return item;
+}
+public static IEnumerable<Member> ToMembers(IEnumerable<Member> Member){return Member;}
+public static IEnumerable<Member> Flatten(
+	IEnumerable<Member> Member,
+	string Join=null,
+	string Suffix=null, 
+	int AddOffset = 0,
+	bool SwapJoin=false,
+	bool Once=false){
+	if(null==(object)Join)Join=string.Empty;
+	if(null==(object)Suffix)Suffix=string.Empty;
+
+	var List = new List<Member>(Member);
+	int OriginalCount=List.Count;
+	for(int i = 0,j=List.Count;i<j;++i){
+		var Expand=List[i];
+		if(Expand==null){
+			List.RemoveAt(i--);
+			if(OriginalCount > j--)
+				--OriginalCount;
+		}else if(!Once || i < OriginalCount) {
+			foreach(var SubMember in Expand.Type.Members) if(null!=SubMember) {
+				List.Add(new Member{
+					Name=SwapJoin?string.Concat(SubMember.Name, Join, Expand.Name):string.Concat(Expand.Name, Join, SubMember.Name),
+					Offset=Expand.Offset + SubMember.Offset,
+					Type=SubMember.Type,
+				});
+			}
+		}
+	}
+
+	for(int i = OriginalCount,j=List.Count; i < j; ++i)
+		List[i].Name = string.Concat(List[i].Name, Suffix);
+
+	return List;
+}
+public static IEnumerable<Member> Pair_(
+	IEnumerable<Member> One,
+	IEnumerable<Member> Two){
+	foreach(var item in One) yield return item;
+	foreach(var item in Two) yield return item;
+}
+public static IEnumerable<Member> Pair(
+	IEnumerable<Member> One,
+	IEnumerable<Member> Two){
+	if(One==Two||Two==null||One==null)
+		return One ?? Two;
+	else
+		return Pair_(One,Two);
+}
+#>

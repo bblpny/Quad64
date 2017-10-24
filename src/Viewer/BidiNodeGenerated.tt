@@ -1,0 +1,197 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ output extension=".cs" #>using System;
+using System.Collections.Generic;
+
+namespace Quad64 {
+	partial class BidiNodeUtility {
+
+<#
+CompareStruct[] SortStructs = {
+	new CompareStruct{
+		Name = "SortComparer",
+		Generic = "TComparer",
+		Member = "public TComparer Comparer",
+		Argument = "Comparer",
+		ArgumentType = "ref TComparer",
+		Constraint = "where TComparer : struct, IComparer<TNode>",
+		Format = "Comparer.Compare({0},{1})",
+	},
+	new CompareStruct{
+		Name = "SortComparer",
+		Member = "public IComparer<TNode> Comparer",
+		Argument = "Comparer",
+		ArgumentType = "IComparer<TNode>",
+		Format = "Comparer.Compare({0},{1})",
+	},
+	new CompareStruct{
+		Name = "SortComparison",
+		Member = "public Comparison<TNode> Comparison",
+		Argument = "Comparison",
+		ArgumentType = "Comparison<TNode>",
+		Format = "Comparison({0},{1})",
+	},
+	new CompareStruct{
+		Name = "SortComparable",
+		Constraint = ", IComparable<TNode>",
+		Format = "{0}.CompareTo({1})",
+	},
+};
+foreach(var Struct in SortStructs){#>
+		private struct <#=Struct.Name#><TNode<#=Struct.InsertGeneric#>>
+			where TNode : class, IBidiNode<TNode><#=Struct.InsertConstraint#> {
+			public TNode X, Swap;
+			public <#=Node#> RealFirst, RealLast, I, J;
+<#if(Struct.Member!=null){#>
+			<#=Struct.Member#>;
+<#}#>
+			private void Partition(
+				<#=Node#> First,
+				<#=Node#> Last)
+			{
+				for (X = Last.Data, I = First.Prev, J = First; J != Last; J = J.Next)
+					if ((object)J.Data == (object)X || 0 >= <#=string.Format(Struct.Format,"J.Data", "X")#>){
+						I = I.Next;
+						Swap=J.Data;
+						J.Data=I.Data;
+						I.Data=Swap;
+					}
+				I=I.Next;
+				Swap=I.Data;I.Data=Last.Data;
+				Last.Data=Swap;
+			}
+			private void Sort(
+				<#=Node#> First,
+				<#=Node#> Last)
+			{
+				<#=Node#> Split;
+				if (First != Last && First != Last.Next)
+				{
+					Partition(First, Last);
+					Split = I;
+
+					if(Split!=RealFirst)
+						Sort(First, Split.Prev);
+
+					if(Split!=RealLast)
+						Sort(Split.Next, Last);
+				}
+			}
+
+			public bool EnsureSorted()
+			{
+				for (<#=Node#> A = RealFirst, 
+					B = A.Next; B != RealFirst; 
+					A = B, B = B.Next)
+					if (<#=string.Format(Struct.Format,"A.Data","B.Data")#> > 0)
+						return false;
+				return true;
+			}
+
+			public void Sort()
+			{
+				<#=Node#> Split;
+				Partition(RealFirst, RealLast);
+				Split = I;
+
+				if(Split!=RealFirst)
+					Sort(RealFirst, Split.Prev);
+
+				if(Split!=RealLast)
+					Sort(Split.Next, RealLast);
+#if DEBUG
+				if (!EnsureSorted())
+					throw new System.InvalidOperationException("Sort failed");
+#endif
+			}
+		}
+<#}
+foreach(var Struct in SortStructs){#>
+		public static void Sort<TNode<#=Struct.InsertGeneric#>>(ref <#=List#> List<#=Struct.InsertParameter#>)
+			where TNode : class, IBidiNode<TNode><#=Struct.InsertConstraint#>{
+			TNode Swap;
+			if (List.Count > 1u)
+			{
+				if (List.Count == 2)
+				{
+					if (<#=string.Format(Struct.Format,"List.First.Data","List.Last.Data")#> > 0)
+					{
+						Swap = List.First.Data;
+						List.First.Data = List.Last.Data;
+						List.Last.Data = Swap;
+					}
+				}
+				else
+				{
+					new <#=Struct.Name#><TNode<#if(Struct.Generic!=null){#>, TComparer<#}#>>
+					{
+						RealFirst = List.First,
+						RealLast = List.Last,
+<#	if(Struct.Argument != null){#>
+						<#=Struct.Argument#> = <#=Struct.Argument#>,
+<#	}#>
+					}.Sort();
+				}
+			}
+		}
+<#	for(int iOverload=0;iOverload<4;iOverload++){
+		string DumpArgument = 0 == (iOverload & 2) ? string.Empty : ("ref "+Dump+" Dump, ");
+		string ListType = 0 == (iOverload & 1) ? "IBidiNodeList<TNode>" : "ref TNodeList";
+#>
+		public static void Sort<TNode<#=Struct.InsertGeneric#><#if(0!=(iOverload&1)){#>, TNodeList<#}#>>(
+			<#=DumpArgument+ListType#> List<#=Struct.InsertParameter#>)
+			where TNode : class, IBidiNode<TNode><#=Struct.InsertConstraint#><#
+				if(0!=(iOverload&1)){#> where TNodeList : struct, IBidiNodeList<TNode> <#}#>{
+			<#=List#> Link;
+			BidiNodeUtility<TNode>.Alloc(<#=0!=(iOverload&1)?"ref ":string.Empty#>List<#if(0!=(iOverload&2)){#>, ref Dump<#}#>, out Link);
+			Sort(ref Link<#=Struct.InsertArgument#>);
+			List.First = Link.First.Data;
+			List.Last = Link.Last.Data;
+<#		if(0!=(iOverload&2)){#>
+			BidiNodeUtility<TNode>.FreeAssign(ref Link, ref Dump);
+<#		}else{#>
+			BidiNodeUtility<TNode>.Assign(ref Link);
+<#		}#>
+		}
+<#	}#>
+<#}#>
+	}
+}
+<#+
+const string Node = "BidiNodeUtility<TNode>.LinkNode";
+const string List = "BidiNodeUtility<TNode>.LinkList";
+const string Dump = "BidiNodeUtility<TNode>.Dump";
+
+class CompareStruct {
+	public string Format;
+	public string Member;
+	public string Argument;
+	public string ArgumentType;
+	public string Generic;
+	public string Constraint;
+	public string Name;
+	public string InsertGeneric {
+		get{
+			return null == Generic ? string.Empty : (", "+Generic);
+		}
+	}
+	public string InsertConstraint {
+		get{
+			return null == Constraint ? string.Empty : (" "+Constraint);
+		}
+	}
+	public string InsertParameter {
+		get{
+			return null == ArgumentType ? string.Empty : (", "+ArgumentType +" "+Argument);
+		}
+	}
+	public string InsertArgument {
+		get{
+			return null == ArgumentType ? string.Empty : (", "+Argument);
+		}
+	}
+}
+#>

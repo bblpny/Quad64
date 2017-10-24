@@ -171,6 +171,12 @@
     <Compile Include="src\Scripts\TextureFormats.cs" />
     <Compile Include="src\Scripts\Transform.cs" />
     <Compile Include="src\TestROM\LaunchROM.cs" />
+    <Compile Include="src\Viewer\BidiNodeGenerated.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>BidiNodeGenerated.tt</DependentUpon>
+    </Compile>
+    <Compile Include="src\Viewer\BidiNodeUtility.cs" />
     <Compile Include="src\Viewer\BoundingBox.cs" />
     <Compile Include="src\Viewer\Camera.cs" />
     <Compile Include="src\Viewer\ContentPipe.cs" />
@@ -276,6 +282,10 @@
     <Content Include="src\Scripts\MatrixTypes.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <LastGenOutput>MatrixTypes.cs</LastGenOutput>
+    </Content>
+    <Content Include="src\Viewer\BidiNodeGenerated.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>BidiNodeGenerated.cs</LastGenOutput>
     </Content>
     <None Include="Resources\icon_Star1_gray.png" />
     <None Include="Resources\icon_Star1.png" />

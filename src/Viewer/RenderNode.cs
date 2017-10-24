@@ -663,7 +663,7 @@ namespace Quad64
 					Iter.Model.drawModel(gi,Iter.Transform, drawLayers, ref Camera);
 		}
 	}
-	public sealed class RenderModel
+	public sealed class RenderModel : IBidiNode<RenderModel>
 	{
 		private System.WeakReference LayerReference;
 		public RenderModel Next, Prev;
@@ -671,6 +671,10 @@ namespace Quad64
 		public RenderObject Object;
 		public Transform Transform;
 		public OpenTK.Vector4 ViewProjected;
+		RenderModel IBidiNode<RenderModel>.Next { get => Next; set => Next = value; }
+		RenderModel IBidiNode<RenderModel>.Prev { get => Prev; set => Prev = value; }
+		RenderModel IBidiNode<RenderModel>.Self =>this;
+
 		public RenderLayer Layer => null == (object)LayerReference ? null : (RenderLayer)LayerReference.Target;
 		public bool Alive => null != LayerReference;
 		public sealed override string ToString()
@@ -999,13 +1003,16 @@ namespace Quad64
 			return Result;
 		}
 	}
-	public sealed class RenderLayer : IDisposable
+	public sealed class RenderLayer : IDisposable, IBidiNodeList<RenderModel>
 	{
 		internal readonly WeakReference Weak;
 		public RenderModel First;
-		public RenderModel Last => 0 == Count ? null : First.Prev;
 		public uint Count;
 		public readonly byte DrawLayer, DrawLayerMask;
+		public RenderModel Last => 0 == Count ? null : First.Prev;
+		RenderModel IBidiNodeList<RenderModel>.First { get => First; set => First = value; }
+		RenderModel IBidiNodeList<RenderModel>.Last { get => 0 == Count ? null : First.Prev; set { } }
+		uint IBidiNodeList<RenderModel>.Count => Count;
 
 		public sealed override string ToString()
 		{
@@ -1182,28 +1189,25 @@ namespace Quad64
 				return y.ViewProjected.Z.CompareTo(x.ViewProjected.Z);
 			}
 		}
-		public IComparer<RenderModel> DefaultComparer = LeastDistanceComparer.Default;
+		public static IComparer<RenderModel> DefaultComparer => LeastDistanceComparer.Default;
+		private static class Sorting
+		{
+			public static BidiNodeUtility<RenderModel>.Dump Dump = new BidiNodeUtility<RenderModel>.Dump
+			{
+				Lock = new object(),
+			};
+		}
 		public void Sort(IComparer<RenderModel> Comparer=null)
 		{
-			if (Count <= 1) return;
+			if (Count <= 1)
+				return;
 			else if (Count == 2)
 			{
 				if ((Comparer ?? DefaultComparer).Compare(First, First.Prev) > 0) First = First.Prev;
 			}
 			else
 			{
-				// TODO, not use the below!
-				RenderModel[] arr = new RenderModel[(int)Count];
-				uint N; int O, P;
-				for (N = Count; N != 0; First = First.Prev,--N)
-					arr[(int)(N - 1u)] = First;
-				System.Array.Sort(arr, (Comparer ?? DefaultComparer));
-				for (N = Count, O = 0, P = (int)(N - 1u); N != 0; P = O++, --N)
-				{
-					arr[P].Next = arr[O];
-					arr[O].Prev = arr[P];
-				}
-				First = arr[(int)(Count - 1u)];
+				BidiNodeUtility.Sort(ref Sorting.Dump, this, Comparer ?? DefaultComparer);
 			}
 		}
 		public void Draw(GraphicsInterface gi, DrawOptions options=0)

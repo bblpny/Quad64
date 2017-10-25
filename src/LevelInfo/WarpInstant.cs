@@ -12,15 +12,18 @@ using BubblePony.Alloc;
 namespace Quad64
 {
     public sealed class WarpInstant : Export.Reference<WarpInstant>, Export.Reference,
-		IMemoryProperty, ILevelProperty, IROMProperty
+		IMemoryProperty, ILevelProperty, IROMProperty, IAreaProperty
 
 	{
-		public readonly Level level;
+		public readonly Area area;
+
 		public readonly ByteSegment memory;
 		[Browsable(false)]
-		public Level Level => level;
+		public Level Level => area.level;
 		[Browsable(false)]
-		public ROM ROM => level.rom;
+		public ROM ROM => area.level.rom;
+		[Browsable(false)]
+		public Area Area => area;
 		private string mem_adr;
 		[Browsable(false)]
 		public ByteSegment Memory => memory;
@@ -70,12 +73,12 @@ namespace Quad64
 		[DisplayName("Address")]
 		[ReadOnly(true)]
 		public string Address => this.GetAddressString();
-		public WarpInstant(Level level, ByteSegment memory)
+		public WarpInstant(Area area, ByteSegment memory)
 		{
-			if (null == (object)level) throw new ArgumentNullException("level");
+			if (null == (object)area) throw new ArgumentNullException("area");
 			if (0 == memory.Length) throw new ArgumentException("length is zero", "memory");
 
-			this.level = level;
+			this.area = area;
 			this.memory = memory;
 		}
         public void MakeReadOnly()

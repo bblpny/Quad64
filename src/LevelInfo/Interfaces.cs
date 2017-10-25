@@ -12,7 +12,10 @@ namespace Quad64
 	{
 		Level Level { get; }
 	}
-
+	public interface IAreaProperty
+	{
+		Area Area { get; }
+	}
 	public interface IModel3DProperty
 	{
 		Model3D Model3D { get; }

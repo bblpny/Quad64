@@ -1,24 +1,22 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Globalization;
-using System.Linq;
-using System.Reflection;
-using System.Text;
 using BubblePony.ExportUtility;
 using Export = BubblePony.Export;
 using BubblePony.Alloc;
 namespace Quad64
 {
-    public sealed class Warp : Export.Reference<Warp>, Export.Reference, IROMProperty,ILevelProperty,IMemoryProperty
+    public sealed class Warp : Export.Reference<Warp>, Export.Reference, IROMProperty,IAreaProperty, ILevelProperty,IMemoryProperty
 	{
-		public readonly Level level;
+		public readonly Area area;
 		private string mem_adr;
 		public readonly ByteSegment memory;
 		[Browsable(false)]
-		public Level Level => level;
+		public Area Area => area;
+
 		[Browsable(false)]
-		public ROM ROM => level.rom;
+		public Level Level => area.level;
+		[Browsable(false)]
+		public ROM ROM => area.level.rom;
 		[Browsable(false)]
 		public ByteSegment Memory => memory;
 		void IMemoryProperty.Address(out ByteSegment segment, out ROM_Address address, out string address_string)
@@ -26,11 +24,11 @@ namespace Quad64
 			IMemoryPropertyUtility.Address(memory, ref mem_adr, out segment, out address, out address_string);
 		}
 
-		public Warp(Level level, ByteSegment memory,bool isPaintingWarp)
+		public Warp(Area area, ByteSegment memory,bool isPaintingWarp)
         {
-			if (null == (object)level) throw new ArgumentNullException("level");
+			if (null == (object)area) throw new ArgumentNullException("area");
 			if (0 == memory.Length) throw new ArgumentException("length is zero", "memory");
-			this.level = level;
+			this.area = area;
 			this.memory = memory;
             this.isPaintingWarp = isPaintingWarp;
         }
@@ -81,7 +79,7 @@ namespace Quad64
 
         public int getROMAddress()
         {
-            return memory.ByteOffset-level.rom.Bytes.ByteOffset;
+            return memory.ByteOffset-Level.rom.Bytes.ByteOffset;
         }
 
         public uint getROMUnsignedAddress()

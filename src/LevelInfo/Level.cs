@@ -11,11 +11,12 @@ using BubblePony.Alloc;
 namespace Quad64
 {
 
-	public sealed class Area : Export.Reference<Area>, Export.Reference
+	public sealed class Area : IROMProperty, ILevelProperty, IModel3DProperty, Export.Reference<Area>, Export.Reference
 	{
-		private readonly Level parent;
-		public ROM rom => parent.rom;
-		public Level level => parent;
+		public readonly Level level;
+		Level ILevelProperty.Level => level;
+		Model3D IModel3DProperty.Model3D => AreaModel;
+		public ROM ROM => level.rom;
 		public TransformI[] startPoints = null;
 		public readonly Model3D AreaModel = new Model3D();
 		public readonly CollisionMap collision = new CollisionMap();
@@ -23,9 +24,11 @@ namespace Quad64
 		public readonly List<Object3D> Objects = new List<Object3D>();
 		public readonly List<Object3D> MacroObjects = new List<Object3D>();
 		public readonly List<Object3D> SpecialObjects = new List<Object3D>();
+		public readonly List<WaterBlock> WaterBlocks = new List<WaterBlock>();
 		public readonly List<Warp> Warps = new List<Warp>();
 		public readonly List<Warp> PaintingWarps = new List<Warp>();
 		public readonly List<WarpInstant> InstantWarps = new List<WarpInstant>();
+		
 
 		public readonly uint GeometryLayoutPointer;
 		public readonly ushort AreaID;
@@ -40,7 +43,7 @@ namespace Quad64
         {
             this.AreaID = areaID;
             this.GeometryLayoutPointer = geoLayoutPointer;
-            this.parent = parent;
+            this.level = parent;
         }
 		
 		const int ObjectColorB = 1;
@@ -104,9 +107,9 @@ namespace Quad64
 
 		public void drawPicking()
 		{
-			drawPickingObjects(parent, Objects, ObjectColorB);
-			drawPickingObjects(parent, MacroObjects, MacroObjectColorB);
-			drawPickingObjects(parent, SpecialObjects, SpecialObjectColorB);
+			drawPickingObjects(level, Objects, ObjectColorB);
+			drawPickingObjects(level, MacroObjects, MacroObjectColorB);
+			drawPickingObjects(level, SpecialObjects, SpecialObjectColorB);
 		}
 		public void drawPicking(Transform transform)
 		{
@@ -149,7 +152,7 @@ namespace Quad64
 
 				if ((modelId = obj.ModelID) != 0)
 				{
-					if (!parent.ModelIDs.TryGetValue(modelId, out model))
+					if (!level.ModelIDs.TryGetValue(modelId, out model))
 						continue;
 					if (Globals.drawObjectModels)
 						model.drawModel(gi,transform, ref camTrs);
@@ -170,7 +173,7 @@ namespace Quad64
 				obj = list[i];
 				if ((modelId = obj.ModelID) != 0)
 				{
-					if (!parent.ModelIDs.TryGetValue(modelId, out model))
+					if (!level.ModelIDs.TryGetValue(modelId, out model))
 						continue;
 
 					obj.LoadTransform(out transform, ref camTrs);
@@ -228,7 +231,7 @@ namespace Quad64
 
 				if ((modelId = obj.ModelID) != 0)
 				{
-					if (!parent.ModelIDs.TryGetValue(modelId, out model))
+					if (!level.ModelIDs.TryGetValue(modelId, out model))
 						continue;
 
 					layer.Render(
@@ -253,7 +256,7 @@ namespace Quad64
 					obj = list[i];
 					if ((modelId = obj.ModelID) != 0)
 					{
-						if (!parent.ModelIDs.TryGetValue(modelId, out model))
+						if (!level.ModelIDs.TryGetValue(modelId, out model))
 							continue;
 
 						obj.LoadTransform(out transform, ref layer.Camera);
@@ -276,7 +279,7 @@ namespace Quad64
 		{
 			ex.Value(AreaID);
 			ex.Value(GeometryLayoutPointer);
-			ex.Ref(parent);
+			ex.Ref(level);
 			ex.Ref(AreaModel);
 			ex.Ref(collision);
 			ex.RefArray(Objects.ToArray());
@@ -325,8 +328,8 @@ namespace Quad64
 				}
 			}
 		}
-        public List<Area> Areas = new List<Area>();
-        public Dictionary<ushort, Model3D> ModelIDs = new Dictionary<ushort, Model3D>();
+        public readonly List<Area> Areas = new List<Area>();
+        public readonly Dictionary<ushort, Model3D> ModelIDs = new Dictionary<ushort, Model3D>();
 
         internal readonly List<ObjectComboEntry> LevelObjectCombos = new List<ObjectComboEntry>();
 		internal readonly List<PresetMacroEntry> MacroObjectPresets = new List<PresetMacroEntry>();

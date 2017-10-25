@@ -269,7 +269,7 @@ namespace Quad64.Scripts
 
 			static public void CMD_24(Runtime rt, ref ByteSegment cmd)
 			{
-				Object3D newObj = new Object3D(rt.lvl, cmd, Object3DCategory.Object);
+				Object3D newObj = new Object3D(rt.lvl.getCurrentArea(), cmd, Object3DCategory.Object);
 				/*
 				if (rom.isSegmentMIO0(seg))
 				{
@@ -300,13 +300,13 @@ namespace Quad64.Scripts
 				newObj.BehaviorParameter3 = cmd[0x12];
 				newObj.BehaviorParameter4 = cmd[0x13];
 				//newObj.level = lvl;
-				rt.lvl.getCurrentArea().Objects.Add(newObj.PreAdd());
+				newObj.area.Objects.Add(newObj.PreAdd());
 			}
 
 
 			static public void CMD_26(Runtime rt, ref ByteSegment cmd)
 			{
-				Warp warp = new Warp(rt.lvl,cmd, false);
+				Warp warp = new Warp(rt.lvl.getCurrentArea(),cmd, false);
 				/*
 				if (rom.isSegmentMIO0(seg))
 				{
@@ -321,12 +321,12 @@ namespace Quad64.Scripts
 				warp.WarpTo_LevelID = cmd[3];
 				warp.WarpTo_AreaID = cmd[4];
 				warp.WarpTo_WarpID = cmd[5];
-				rt.lvl.getCurrentArea().Warps.Add(warp);
+				warp.area.Warps.Add(warp);
 			}
 
 			static public void CMD_27(Runtime rt, ref ByteSegment cmd)
 			{
-				Warp warp = new Warp(rt.lvl,cmd, true);
+				Warp warp = new Warp(rt.lvl.getCurrentArea(),cmd, true);
 				/*
 				if (rom.isSegmentMIO0(seg))
 				{
@@ -341,11 +341,11 @@ namespace Quad64.Scripts
 				warp.WarpTo_LevelID = cmd[3];
 				warp.WarpTo_AreaID = cmd[4];
 				warp.WarpTo_WarpID = cmd[5];
-				rt.lvl.getCurrentArea().PaintingWarps.Add(warp);
+				warp.area.PaintingWarps.Add(warp);
 			}
 			static public void CMD_28(Runtime rt, ref ByteSegment cmd)
 			{
-				WarpInstant warp = new WarpInstant(rt.lvl,cmd);
+				WarpInstant warp = new WarpInstant(rt.lvl.getCurrentArea(),cmd);
 				/*
 				if (rom.isSegmentMIO0(seg))
 				{
@@ -359,7 +359,7 @@ namespace Quad64.Scripts
 				warp.TriggerID = cmd[2];
 				warp.AreaID = cmd[3];
 				warp.Tele = bytesToVector3s(cmd, 4);
-				rt.lvl.getCurrentArea().InstantWarps.Add(warp);
+				warp.area.InstantWarps.Add(warp);
 			}
 			static public void CMD_2B(Runtime rt, ref ByteSegment cmd) {
 				var area = cmd[2];
@@ -382,6 +382,7 @@ namespace Quad64.Scripts
 			static public void CMD_2E(Runtime rt, ref ByteSegment cmd)
 			{
 				Object3D newObj;
+				WaterBlock waterBlock;
 				ByteSegment objDat;
 				if (cmd.Length < 8)
 					return;
@@ -427,7 +428,7 @@ namespace Quad64.Scripts
 								entry = getSpecialObjectEntry(rt.rom,(byte)obj_id);
 								if (entry.Length == 0) throw new System.InvalidOperationException();
 								data.Segment((uint)off,getSpecialObjectLength(obj_id), out objDat);
-								newObj = new Object3D(rt.lvl, objDat,Object3DCategory.SpecialObject);
+								newObj = new Object3D(rt.lvl.getCurrentArea(), objDat,Object3DCategory.SpecialObject);
 								/*
 								if (rom.isSegmentMIO0(segOff.Segment))
 								{
@@ -478,7 +479,7 @@ namespace Quad64.Scripts
 								newObj.setBehaviorFromAddress(ent_behavior);
 								newObj.DontShowActs();
 								if (ent_behavior != 0)
-									rt.lvl.getCurrentArea().SpecialObjects.Add(newObj.PreAdd());
+									newObj.area.SpecialObjects.Add(newObj.PreAdd());
 								else if (entry[3] != 0)
 									Console.WriteLine("Didn't draw:" + entry[3]);
 								off += objDat.Length;
@@ -492,9 +493,10 @@ namespace Quad64.Scripts
 								off += 4;
 								for (int i = 0; i < num_boxes; i++)
 								{
-									var one = bytesToVector3s(data, off);
-									var two = bytesToVector3s(data, off + 6);
-									off += 0xC;
+									data.Segment((uint)off, 0x0C, out objDat);
+									waterBlock = new WaterBlock(rt.lvl.getCurrentArea(), objDat,i);
+									waterBlock.area.WaterBlocks.Add(waterBlock);
+									off += 0x0C;
 								}
 							}
 							continue;
@@ -521,7 +523,7 @@ namespace Quad64.Scripts
 					//rom.printArray(data, 10);
 					iddat = bytesToUInt16(data);
 					if ((iddat & 0x1FFu) == 0 || (iddat & 0x1FFu) == 0x1E) break;
-					newObj = new Object3D(rt.lvl, data, Object3DCategory.MacroObject);
+					newObj = new Object3D(rt.lvl.getCurrentArea(), data, Object3DCategory.MacroObject);
 #if NO
 					// should this be data? not cmd?
 					if (rom.isSegmentMIO0(pos.Segment/*cmd[4]*/))
@@ -559,7 +561,7 @@ namespace Quad64.Scripts
 					else
 						newObj.BehaviorParameter2 = entryData[7];
 
-					rt.lvl.getCurrentArea().MacroObjects.Add(newObj.PreAdd());
+					newObj.area.MacroObjects.Add(newObj.PreAdd());
 					pos += 10;
 					data = rt.rom.getDataFromSegmentAddress_safe(pos, 10);
 				}

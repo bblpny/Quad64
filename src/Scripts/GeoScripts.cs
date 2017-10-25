@@ -319,7 +319,7 @@ namespace Quad64.Scripts
 						Exit(rt, jump.returnCode);
 				}
 			}
-			static public void CMD_04(Runtime rt, ref ByteSegment cmd)
+			static GeoNode OpenNode(Runtime rt)
 			{
 				var parent = rt.currentParent;
 
@@ -333,8 +333,9 @@ namespace Quad64.Scripts
 				}
 				//if(nodeCurrent.Depth==0) System.Console.WriteLine("Hit Top");
 				rt.nodeCurrent = newNode;
+				return newNode;
 			}
-			static public void CMD_05(Runtime rt,ref ByteSegment cmd)
+			static void CloseNode(Runtime rt)
 			{
 				if (null == (object)rt.nodeCurrent)
 				{
@@ -351,6 +352,14 @@ namespace Quad64.Scripts
 				{
 					rt.nodeCurrent = rt.nodeCurrent.Outer;
 				}
+			}
+			static public void CMD_04(Runtime rt, ref ByteSegment cmd)
+			{
+				OpenNode(rt);
+			}
+			static public void CMD_05(Runtime rt,ref ByteSegment cmd)
+			{
+				CloseNode(rt);
 			}
 
 			static public void CMD_0E(Runtime rt, ref ByteSegment cmd)
@@ -392,10 +401,11 @@ namespace Quad64.Scripts
 			}
 			private static void F3D_Command(
 				Runtime rt,
-				GeoModel model,
 				byte drawLayer,
 				SegmentOffset segOff)
 			{
+				var model = OpenNode(rt).StartModel();
+
 				using (ModelBuilder.NodeBinder.Bind(
 					rt.mdl.builder,
 					model))
@@ -408,6 +418,8 @@ namespace Quad64.Scripts
 						segOff,
 						overrideDrawLayer:drawLayer);
 
+				CloseNode(rt);
+
 				model.Build();
 			}
 			static public unsafe void CMD_13(Runtime rt, ref ByteSegment cmd)
@@ -416,17 +428,7 @@ namespace Quad64.Scripts
 				rt.currentParent.Cursor.translation = bytesToVector3s(cmd, 2);
 				if (0u!=seg_offset)
 				{
-					CMD_04(rt, ref cmd);
-					var node = rt.nodeCurrent;
-					// Don't bother processing duplicate display lists.
-					//if (!mdl.hasGeoDisplayList(seg_offset.Offset))
-					F3D_Command(rt, node.StartModel(), cmd[1], seg_offset);
-					//else
-					//{
-					//	Console.WriteLine("dupe:"+seg_offset.ToString("X8")+" "+x+" "+y+" "+z);
-					//}
-					//mdl.builder.Offset = default(Vector3);
-					CMD_05(rt, ref cmd);
+					F3D_Command(rt, cmd[1], seg_offset);
 				}
 				else
 				{
@@ -446,8 +448,7 @@ namespace Quad64.Scripts
 			static public unsafe void CMD_15(Runtime rt, ref ByteSegment cmd)
 			{
 				// if (bytesToInt(cmd, 4, 4) != 0x07006D70) return;
-				var node = rt.nodeCurrent;
-					var segOff = bytesToSegmentOffset(cmd, 4);
+				var segOff = bytesToSegmentOffset(cmd, 4);
 #if DEBUG
 				if (segOff == 0u) rt.counter[258]++;
 #endif
@@ -455,7 +456,7 @@ namespace Quad64.Scripts
 				//if (!mdl.hasGeoDisplayList(segOff.Offset))
 				{
 					Globals.DEBUG_PDL = segOff;
-					F3D_Command(rt, node.StartModel(), cmd[1], segOff);
+					F3D_Command(rt, cmd[1], segOff);
 				}
 				//else
 				//{

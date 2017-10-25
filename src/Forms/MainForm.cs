@@ -392,7 +392,13 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 			glControl1.Enabled = false;
             KeyPreview = true;
             treeView1.HideSelection = false;
-            camera.Update(ref camMtx, force:true);
+			this.treeView1.Nodes.Add( new TreeNode("Water Blocks")
+			{
+				ForeColor = System.Drawing.Color.FromArgb(
+					((int)(((byte)(20)))), ((int)(((byte)(162)))), ((int)(((byte)(192))))),
+			});
+
+			camera.Update(ref camMtx, force:true);
 			fileToolStripMenuItem.DropDownItems.Add("Export Area").Click += ExportButton;
 			fileToolStripMenuItem.DropDownItems.Add("Export Everything").Click += ExportEverythingButton;
 			//foreach(ObjectComboEntry entry in Globals.objectComboEntries) Console.WriteLine(entry.ToString());
@@ -541,15 +547,18 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 				TreeNode macro_objects = treeView1.Nodes[1];
 				TreeNode special_objects = treeView1.Nodes[2];
 				TreeNode warps = treeView1.Nodes[3];
+				TreeNode water_boxes = treeView1.Nodes[4];
+
 				objects.Nodes.Clear();
 				macro_objects.Nodes.Clear();
 				special_objects.Nodes.Clear();
 				warps.Nodes.Clear();
-
+				water_boxes.Nodes.Clear();
 				objects.Nodes.AddRange(GenerateTreeNodes(level.getCurrentArea().Objects));
 				macro_objects.Nodes.AddRange(GenerateTreeNodes(level.getCurrentArea().MacroObjects));
 				special_objects.Nodes.AddRange(GenerateTreeNodes(level.getCurrentArea().SpecialObjects));
 				warps.Nodes.AddRange(GenerateTreeNodesGeneric(level.getCurrentArea().Warps, level.getCurrentArea().PaintingWarps, level.getCurrentArea().InstantWarps));
+				water_boxes.Nodes.AddRange(GenerateTreeNodesGeneric(level.getCurrentArea().WaterBlocks));
 			}
 			finally
 			{
@@ -624,9 +633,10 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					gi.Camera = camera.Transform;
 				}
 				render_list.AreaRoot = null;
+				Area area=null;
 				if (null != (object)level)
 				{
-					var area = level.getCurrentArea();
+					area = level.getCurrentArea();
 					if (null != (object)area &&
 						null != (object)area.AreaModel)
 					{
@@ -665,14 +675,14 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 				//level.getCurrentArea().drawEverything();
 				render_list.Clear();
 
-//				using (var layer = new RenderList())
+				var waterbox = getSelectedWaterBox(true);
+				//				using (var layer = new RenderList())
 				{
 					//GL.Enable(EnableCap.Normalize);
 					var options = Globals.doBackfaceCulling ? (DrawOptions)0 : DrawOptions.NoCullingChanges;
 					options |= DrawOptions.ForceInvalidate;
 					level.getCurrentArea().renderEverything(render_list);
 					render_list.UpdateLayers();
-					ResetGL();
 					//GL.Disable(EnableCap.AlphaTest);
 					//GL.AlphaFunc(AlphaFunction.Always, 0.5f);
 					//GL.Disable(EnableCap.Blend);
@@ -704,7 +714,14 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					//GL.DepthMask(false);//<-- we could not use this by drawing this first, but it don't seem right.
 					//GL.Enable(EnableCap.PolygonOffsetFill);
 					render_list.Shadow.Draw(gi, options);//<-- shadows.
-					ResetGL();
+
+					if (area != null)
+						foreach (var item in area.WaterBlocks)
+						{
+							item.LoadState(ref gi.State, temp_is_selected: waterbox==item);
+							gi.Bind(ForceInvalidate: true, Draw: true);
+						}
+					
 					//GL.Enable(EnableCap.DepthTest);
 					//GL.AlphaFunc(AlphaFunction.Greater, 0f);
 					//GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
@@ -718,6 +735,10 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
 					// bounds..
 					render_list.DrawBounds();
 
+					if (waterbox != null)
+					{
+						((WaterBlock)waterbox).DrawBoundingBox();
+					}
 					if (Globals.doWireframe)
 						GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
 
@@ -1325,8 +1346,15 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                         propertyGrid1.SelectedObject = area.PaintingWarps[node.Index - area.Warps.Count];
                     else
                         propertyGrid1.SelectedObject = area.InstantWarps[node.Index - area.Warps.Count - area.PaintingWarps.Count];
-                }
-            }
+				}
+				else if (node.Parent.Text.Equals("Water Blocks"))
+				{
+					Globals.list_selected = 4;
+					Globals.item_selected = node.Index;
+					Area area = level.getCurrentArea();
+					propertyGrid1.SelectedObject = area.WaterBlocks[node.Index];
+				}
+			}
             
             Object3D obj = getSelectedObject();
             if (obj != null)
@@ -1433,38 +1461,44 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
         private void propertyGrid1_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
         {
             string label = e.ChangedItem.Label;
-            if (Globals.list_selected > -1 && Globals.list_selected < 3)
-            {
-                Object3D obj = getSelectedObject();
-                if (obj == null) return;
-                if (label.Equals("All Acts"))
-                {
-                    obj.ShowHideActs((bool)e.ChangedItem.Value);
-                    propertyGrid1.Refresh();
-                }
-                else if(label.Equals("Behavior") || label.Equals("Model ID"))
-                {
-                    if(Globals.item_selected > -1)
-                        treeView1.Nodes[Globals.list_selected].Nodes[Globals.item_selected].Text
-                            = obj.getObjectComboName();
-                }
-                obj.updateROMData();
-                camera.updateResetInvalidate(ref camMtx);
-                glControl1.Invalidate();
-            }
-            else if (Globals.list_selected == 3)
-            {
-                object warp = getSelectedWarp();
-                string warpTypeName = warp.GetType().Name;
-                if (warpTypeName.Equals("Warp"))
-                {
-                    ((Warp)warp).updateROMData();
-                }
-                else if (warpTypeName.Equals("WarpInstant"))
-                {
-                    ((WarpInstant)warp).updateROMData();
-                }
-            }
+			if (Globals.list_selected > -1 && Globals.list_selected < 3)
+			{
+				Object3D obj = getSelectedObject();
+				if (obj == null) return;
+				if (label.Equals("All Acts"))
+				{
+					obj.ShowHideActs((bool)e.ChangedItem.Value);
+					propertyGrid1.Refresh();
+				}
+				else if (label.Equals("Behavior") || label.Equals("Model ID"))
+				{
+					if (Globals.item_selected > -1)
+						treeView1.Nodes[Globals.list_selected].Nodes[Globals.item_selected].Text
+							= obj.getObjectComboName();
+				}
+				obj.updateROMData();
+				camera.updateResetInvalidate(ref camMtx);
+				glControl1.Invalidate();
+			}
+			else if (Globals.list_selected == 3)
+			{
+				object warp = getSelectedWarp();
+				if (warp is Warp)
+				{
+					((Warp)warp).updateROMData();
+				}
+				else if (warp is WarpInstant)
+				{
+					((WarpInstant)warp).updateROMData();
+				}
+				else return;// null or not a warp.
+			}
+			else if (Globals.list_selected == 4)
+			{
+				var wb = getSelectedWaterBox();
+				if (null == wb) return;
+				((WaterBlock)wb).updateROMData();
+			}
             Globals.needToSave = true;
         }
 
@@ -1623,9 +1657,28 @@ Total	{6}", TimeString(ProcObjGen - ProcStart), TimeString(ProcObjWrite - ProcOb
                 default:
                     return null;
             }
-        }
+		}
+		private object getSelectedWaterBox(bool doNotMessWithControls=false)
+		{
+			if (Globals.list_selected == 4 && Globals.item_selected != -1 && null != level)
+			{
+				Area area = level.getCurrentArea();
+				if (null != area)
+				{
+					if (Globals.item_selected < area.WaterBlocks.Count)
+					{
+						if(doNotMessWithControls)
+							return area.WaterBlocks[Globals.item_selected];
 
-        bool moveObj_mouseDown = false;
+						propertyGrid1.SelectedObject = area.WaterBlocks[Globals.item_selected];
+						return propertyGrid1.SelectedObject;
+					}
+				}
+			}
+			return null;
+		}
+
+		bool moveObj_mouseDown = false;
         int moveObj_lastMouseX = 0;
         int moveObj_lastMouseY = 0;
         short moveObj_savedX=0, moveObj_savedY=0, moveObj_savedZ=0;

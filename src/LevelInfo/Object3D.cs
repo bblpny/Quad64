@@ -18,7 +18,7 @@ namespace Quad64
 	}
 
 	public sealed class Object3D : Export.Reference<Object3D>,Export.Reference,
-		IROMProperty, ILevelProperty, IMemoryProperty
+		IROMProperty, ILevelProperty, IAreaProperty, IMemoryProperty
     {
 		[Flags]
         public enum FLAGS : uint{
@@ -39,14 +39,15 @@ namespace Quad64
             BPARAM_2 = 0x4000,
             BPARAM_3 = 0x8000,
             BPARAM_4 = 0x10000,
-        }
-
+		}
 		[Browsable(false)]
-		public Level Level => level;
+		public Area Area => area;
+		[Browsable(false)]
+		public Level Level => area.level;
 		[Browsable(false)]
 		public ByteSegment Memory => memory;
 		[Browsable(false)]
-		public ROM ROM => level.rom;
+		public ROM ROM => area.level.rom;
 
 		public readonly ByteSegment memory;
 		private string mem_adr;
@@ -228,7 +229,7 @@ namespace Quad64
 
 		/**************************************************************************************/
 		
-		public readonly Level level;
+		public readonly Area area;
 
 		public int getROMAddress()
         {
@@ -519,8 +520,8 @@ namespace Quad64
             {
                 ObjectComboEntry entry = Globals.objectComboEntries[i];
                 uint modelSegmentAddress = 0;
-                if (level.ModelIDs.ContainsKey(ModelID))
-                    modelSegmentAddress = level.ModelIDs[ModelID].GeoDataSegAddress;
+                if (Level.ModelIDs.ContainsKey(ModelID))
+                    modelSegmentAddress = Level.ModelIDs[ModelID].GeoDataSegAddress;
                 if (entry.ModelID == ModelID && entry.Behavior == behaviorAddr && entry.ModelSegmentAddress == modelSegmentAddress)
                 {
                     objectComboEntry = entry;
@@ -598,12 +599,12 @@ namespace Quad64
 
 				ex.Value(data, (uint)data_size);
 			}
-			ex.Ref(level);
+			ex.Ref(area);
 
 		}
-		public Object3D(Level level, ByteSegment Memory, Object3DCategory Kind)
+		public Object3D(Area area, ByteSegment Memory, Object3DCategory Kind)
 		{
-			this.level = level;
+			this.area = area;
 			this.Kind = Kind;
 			this.memory = Memory;
 			this.trs.scale.Whole = 1;

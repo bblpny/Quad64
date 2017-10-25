@@ -152,7 +152,11 @@
     <Compile Include="src\Scripts\CollisionMap.cs" />
     <Compile Include="src\Scripts\Color4b.cs" />
     <Compile Include="src\Scripts\Fast3DScripts.cs" />
+    <Compile Include="src\Scripts\GeoMesh.cs" />
+    <Compile Include="src\Scripts\GeoModel.cs" />
     <Compile Include="src\Scripts\GeoNode.cs" />
+    <Compile Include="src\Scripts\GeoParent.cs" />
+    <Compile Include="src\Scripts\GeoRoot.cs" />
     <Compile Include="src\Scripts\GeoScripts.cs" />
     <Compile Include="src\Scripts\LightArray.cs">
       <AutoGen>True</AutoGen>

@@ -332,6 +332,7 @@ namespace Quad64.Scripts
 				this.lvl = copy.lvl;
 				this.mdl = copy.mdl;
 				this.mat = copy.mat;
+				this.vb = copy.vb;
 			}
 			public Runtime(Runtime copy, SegmentOffset segOff) : this(copy)
 			{

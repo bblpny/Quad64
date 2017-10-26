@@ -1,0 +1,397 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ output extension=".cs" #>
+using System;
+using System.Runtime.InteropServices;
+using OpenTK;
+namespace Quad64{
+<#
+for(int iElement=Elements.Length-1;iElement>=0;--iElement){
+	Element = Elements[iElement];
+	for(NumAxes = MaxAxesForElement;NumAxes>=MinAxes;--NumAxes){#>
+	///<summary>A <#=NumAxes#> dimension vector with elements of type <#=integer#>.</summary>
+<#		if(NumAxes == 4){#>
+	[StructLayout(LayoutKind.Explicit, Size = sizeof(<#=block#>))]
+	public partial struct <#=Vector#>
+		: IEquatable<<#=Vector#>>, IEquatable<<#=Vector3#>>
+	{
+		[FieldOffset(sizeof(<#=integer#>) * 3)]
+		public <#=integer#> X;
+		[FieldOffset(sizeof(<#=integer#>) * 2)]
+		public <#=integer#> Y;
+		[FieldOffset(sizeof(<#=integer#>) * 1)]
+		public <#=integer#> Z;
+		[FieldOffset(sizeof(<#=integer#>) * 0)]
+		public <#=integer#> W;
+		[FieldOffset(0)]
+		public <#=block#> Packed;
+		public <#=integer#> this[int axis]{
+			get	{
+				return 0 == (axis & 2) ? 0 == (axis & 1) ? X : Y : 0 == (axis & 1) ? Z : W;
+			}
+			set	{
+				if (0 == (axis & 2))
+					if (0 == (axis & 1))
+						X = value;
+					else
+						Y = value;
+				else
+					if (0 == (axis & 1))
+					Z = value;
+				else
+					W = value;
+			}
+		}
+		
+		public bool Equals(<#=Vector3#> other) {
+			return W == 0 && X == other.X && Y == other.Y && Z == other.Z;
+		}
+		public bool Equals(<#=Vector#> other) {
+			return Packed == other.Packed;
+		}
+		public override string ToString(){
+			var Xs = X == 0 ? "0" : X.ToString();
+			var Ys = X == Y ? Xs : Y == 0 ? "0" : Y.ToString();
+			var Zs = X == Z ? Xs : Y == Z ? Ys : Z == 0 ? "0" : Z.ToString();
+			var Ws = X == W ? Xs : Y == W ? Ys : Z == W ? Zs : W == 0 ? "0" : W.ToString();
+
+			return string.Concat("[",
+				string.Concat(Xs, ",", Ys, ","),
+				string.Concat(Zs, ",", Ws, "]"));
+		}
+<#		}else if(NumAxes==2){#>
+	[StructLayout(LayoutKind.Explicit, Size = sizeof(<#=block#>))]
+	public partial struct <#=Vector#>
+		: IEquatable<<#=Vector#>>
+	{
+		[FieldOffset(sizeof(<#=integer#>) * 1)]
+		public <#=integer#> X;
+		[FieldOffset(sizeof(<#=integer#>) * 0)]
+		public <#=integer#> Y;
+		[FieldOffset(0)]
+		public <#=block#> Packed;
+		public <#=integer#> this[int axis]{
+			get	{
+				return 0 == (axis & 1) ? X : Y;
+			}
+			set	{
+				if (0 == (axis & 1))
+					X = value;
+				else
+					Y = value;
+			}
+		}
+		public bool Equals(<#=Vector#> other){
+			return Packed == other.Packed;
+		}
+
+		public override string ToString(){
+			var Xs = X == 0 ? "0" : X.ToString();
+			var Ys = X == Y ? Xs : Y == 0 ? "0" : Y.ToString();
+			return string.Concat("[",
+				string.Concat(Xs, ",", Ys, "]"));
+		}
+<#		}else if(NumAxes==3){#>
+	[StructLayout(LayoutKind.Sequential, Size = <#=NumAxes * Element.Size#>, Pack = <#=Element.Size#>)]
+	public partial struct <#=Vector#>
+		: IEquatable<<#=Vector#>>, IEquatable<<#=Vector4#>>
+	{
+		public <#=integer#> X;
+		public <#=integer#> Y;
+		public <#=integer#> Z;
+		public <#=block#> Packed {
+			get { return new <#=Vector4#> { X = X, Y = Y, Z = Z, }.Packed; }
+			set {
+				var V4 = new <#=Vector4#> { Packed = value, };
+				this.X = V4.X;
+				this.Y = V4.Y;
+				this.Z = V4.Z;
+			}
+		}
+		public <#=integer#> this[int axis] {
+			get {
+				return 0 == (axis & 2) ? 0 == (axis & 1) ? X : Y : 0 == (axis & 1) ? Z : (<#=integer#>)0;
+			}
+			set	{
+				if (0 == (axis & 2))
+					if (0 == (axis & 1))
+						X = value;
+					else
+						Y = value;
+				else
+					if (0 == (axis & 1))
+					Z = value;
+			}
+		}
+		public bool Equals(<#=Vector#> other) {
+			return X == other.X && Y == other.Y && Z == other.Z;
+		}
+		public bool Equals(<#=Vector4#> other) {
+			return 0 == other.W && X == other.X && Y == other.Y && Z == other.Z;
+		}
+		public override string ToString() {
+			var Xs = X == 0 ? "0" : X.ToString();
+			var Ys = X == Y ? Xs : Y == 0 ? "0" : Y.ToString();
+			var Zs = X == Z ? Xs : Y == Z ? Ys : Z == 0 ? "0" : Z.ToString();
+
+			return string.Concat("[",
+				string.Concat(Xs, ",", Ys, ","),
+				Zs, "]");
+		}
+<#		}
+if(NumAxes!=3){#>
+		public static bool operator ==(<#=Vector#> L, <#=Vector#> R) { return L.Packed == R.Packed; }
+		public static bool operator !=(<#=Vector#> L, <#=Vector#> R) { return L.Packed != R.Packed; }
+		public static bool operator ==(<#=Vector#> L, <#=block#> R) { return L.Packed == R; }
+		public static bool operator !=(<#=Vector#> L, <#=block#> R) { return L.Packed != R; }
+		public static bool operator ==(<#=block#> L, <#=Vector#> R) { return L == R.Packed; }
+		public static bool operator !=(<#=block#> L, <#=Vector#> R) { return L != R.Packed; }
+
+		public static <#=Vector#> operator &(<#=Vector#> L, <#=Vector#> R) { return new <#=Vector#> { Packed = (<#=block#>)(L.Packed & R.Packed), }; }
+		public static <#=Vector#> operator |(<#=Vector#> L, <#=Vector#> R) { return new <#=Vector#> { Packed = (<#=block#>)(L.Packed | R.Packed), }; }
+		public static <#=Vector#> operator ^(<#=Vector#> L, <#=Vector#> R) { return new <#=Vector#> { Packed = (<#=block#>)(L.Packed ^ R.Packed), }; }
+		public static bool operator true(<#=Vector#> criteria) { return criteria.Packed != 0; }
+		public static bool operator false(<#=Vector#> criteria) { return 0 == criteria.Packed; }
+<#		}else{#>
+		public static bool operator ==(<#=Vector#> L, <#=Vector#> R) { return L.X == R.X && L.Y == R.Y && L.Z == R.Z; }
+		public static bool operator !=(<#=Vector#> L, <#=Vector#> R) { return L.X != R.X || L.Y != R.Y || L.Z != R.Z; }
+		public static bool operator ==(<#=Vector#> L, <#=block#> R) { return L.Packed == R; }
+		public static bool operator !=(<#=Vector#> L, <#=block#> R) { return L.Packed != R; }
+		public static bool operator ==(<#=block#> L, <#=Vector#> R) { return L == R.Packed; }
+		public static bool operator !=(<#=block#> L, <#=Vector#> R) { return L != R.Packed; }
+
+		public static <#=Vector#> operator &(<#=Vector#> L, <#=Vector#> R) { return new <#=Vector#> { Packed = (<#=block#>)(L.Packed & R.Packed), }; }
+		public static <#=Vector#> operator |(<#=Vector#> L, <#=Vector#> R) { return new <#=Vector#> { Packed = (<#=block#>)(L.Packed | R.Packed), }; }
+		public static <#=Vector#> operator ^(<#=Vector#> L, <#=Vector#> R) { return new <#=Vector#> { Packed = (<#=block#>)(L.Packed ^ R.Packed), }; }
+		public static bool operator true(<#=Vector#> criteria) { return criteria.X != 0 || criteria.Y != 0 || criteria.Z != 0; }
+		public static bool operator false(<#=Vector#> criteria) { return 0 == criteria.X && 0 == criteria.Y && 0 == criteria.Z; }
+<#		}#>
+<#		foreach(var Op in BinaryOperators){#>
+		public static <#=Vector#> operator <#=Op#>(<#=Vector#> L, <#=Vector#> R)
+		{
+			unchecked
+			{
+				return new <#=Vector#> {
+<#			foreach(var N in Axes){#>
+					<#=N#> = (<#=integer#>)(L.<#=N#> <#=Op#> R.<#=N#>),
+<#			}#>
+				};
+			}
+		}
+		public static <#=Vector#> operator <#=Op#>(<#=Vector#> L, <#=integer#> R)
+		{
+			unchecked
+			{
+				return new <#=Vector#> {
+<#			foreach(var N in Axes){#>
+					<#=N#> = (<#=integer#>)(L.<#=N#> <#=Op#> R),
+<#			}#>
+				};
+			}
+		}
+		public static <#=Vector#> operator <#=Op#>(<#=integer#> L, <#=Vector#> R)
+		{
+			unchecked
+			{
+				return new <#=Vector#> {
+<#			foreach(var N in Axes){#>
+					<#=N#> = (<#=integer#>)(L <#=Op#> R.<#=N#>),
+<#			}#>
+				};
+			}
+		}
+		public static <#=VectorD#> operator <#=Op#>(<#=Vector#> L, double R){
+			return new <#=VectorD#>{
+<#			foreach(var N in Axes){#>
+				<#=N#> = (L.<#=N#> <#=Op#> R),
+<#			}#>
+			};
+		}
+		public static <#=VectorF#> operator <#=Op#>(<#=Vector#> L, float R){
+			return new <#=VectorF#>{
+<#			foreach(var N in Axes){#>
+				<#=N#> = (L.<#=N#> <#=Op#> R),
+<#			}#>
+			};
+		}
+		public static <#=VectorD#> operator <#=Op#>(double L, <#=Vector#> R){
+			return new <#=VectorD#>{
+<#			foreach(var N in Axes){#>
+				<#=N#> = (L <#=Op#> R.<#=N#>),
+<#			}#>
+			};
+		}
+		public static <#=VectorF#> operator <#=Op#>(float L, <#=Vector#> R){
+			return new <#=VectorF#>{
+<#			foreach(var N in Axes){#>
+				<#=N#> = (L <#=Op#> R.<#=N#>),
+<#			}#>
+			};
+		}
+		public static <#=VectorF#> operator <#=Op#>(<#=VectorF#> L, <#=Vector#> R){
+			return new <#=VectorF#>{
+<#			foreach(var N in Axes){#>
+				<#=N#> = (L.<#=N#> <#=Op#> R.<#=N#>),
+<#			}#>
+			};
+		}
+		public static <#=VectorD#> operator <#=Op#>(<#=VectorD#> L, <#=Vector#> R){
+			return new <#=VectorD#>{
+<#			foreach(var N in Axes){#>
+				<#=N#> = (L.<#=N#> <#=Op#> R.<#=N#>),
+<#			}#>
+			};
+		}
+		public static <#=VectorF#> operator <#=Op#>(<#=Vector#> L, <#=VectorF#> R){
+			return new <#=VectorF#>{
+<#			foreach(var N in Axes){#>
+				<#=N#> = (L.<#=N#> <#=Op#> R.<#=N#>),
+<#			}#>
+			};
+		}
+		public static <#=VectorD#> operator <#=Op#>(<#=Vector#> L, <#=VectorD#> R){
+			return new <#=VectorD#>{
+<#			foreach(var N in Axes){#>
+				<#=N#> = (L.<#=N#> <#=Op#> R.<#=N#>),
+<#			}#>
+			};
+		}
+<#		}#>
+		public static explicit operator <#=VectorF#>(<#=Vector#> value)
+		{
+			return new <#=VectorF#>{<#foreach(var N in Axes){#><#=N#> = value.<#=N#>,<#}#>};
+		}
+		public static explicit operator <#=VectorD#>(<#=Vector#> value)
+		{
+			return new <#=VectorD#>{<#foreach(var N in Axes){#><#=N#> = value.<#=N#>,<#}#>};
+		}
+		public static explicit operator <#=Vector#>(<#=VectorF#> value)
+		{
+			return new <#=Vector#>{<#foreach(var N in Axes){#><#=N#> = (<#=integer#>)value.<#=N#>,<#}#>};
+		}
+		public static explicit operator <#=Vector#>(<#=VectorD#> value)
+		{
+			return new <#=Vector#>{<#foreach(var N in Axes){#><#=N#> = (<#=integer#>)value.<#=N#>,<#}#>};
+		}
+<#		if(NumAxes==MaxAxesForElement){#>
+		public override int GetHashCode(){return GetHashCode(ref this);}
+		public static int GetHashCode(<#=Vector#> Value){ 
+			// IF YOU GET AN ERROR ON THE LINE BELOW, ITS BECAUSE YOU DID NOT IMPLEMENT
+			// IT OUTSIDE OF THIS PARTIAL GENERATED CODE.
+			//
+			// NOTE THAT THE ARGUMENT MUST BE NAMED VALUE!
+			return GetHashCode(Value:ref Value);
+		}
+<#		}else{#>
+		public override int GetHashCode() {
+			return <#=VectorMaxAxes#>.GetHashCode(new <#=VectorMaxAxes#> { <#foreach(var N in Axes){#><#=N#>=<#=N#>,<#}#>});
+		}
+<#		}#>
+<#		if(Element.Signed){#>
+		public static <#=Vector#> operator -(<#=Vector#> v) {
+			unchecked { 
+				return new <#=Vector#> {
+<#			foreach(var N in Axes){#>
+					<#=N#>= (<#=integer#>)(-v.X),
+<#			}#>
+				};
+			}
+		}
+<#		}#>
+		public override bool Equals(object obj)
+		{
+			return obj is <#=Vector#> && Packed == ((<#=Vector#>)obj).Packed;
+		}
+		public static explicit operator <#=Vector#>(<#=block#> value) {
+			return new <#=Vector#> { Packed = value, };
+		}
+	}
+<#	}#>
+<#}#>
+}
+<#+
+const int MaxAxes=4;
+const int MinAxes=2;
+static int NumAxes=MaxAxes;
+static string integer {get{return Element.Name;}}
+static string block {get{
+	switch( Element.Size * NumAxes ){
+		case 1: return "byte";
+		case 2: return "ushort";
+		case 4: return "uint";
+		case 8: return "ulong";
+		default:
+		if((Element.Size * NumAxes)>4)goto case 8;
+		if((Element.Size * NumAxes)>2)goto case 4;
+		goto case 2;
+	}
+}}
+static string Vector {get{return  string.Concat("Vector",NumAxes,Element.Suffix);}}
+static string Vector2 {get{return string.Concat("Vector2",Element.Suffix);}}
+static string Vector3 {get{return string.Concat("Vector3",Element.Suffix);}}
+static string Vector4 {get{return string.Concat("Vector4",Element.Suffix);}}
+static string VectorF {get{return string.Concat("Vector",NumAxes);}}
+static string VectorD {get{return string.Concat("Vector",NumAxes,"d");}}
+static string VectorMaxAxes {get{return string.Concat("Vector",MaxAxesForElement,Element.Suffix);}}
+const string Vector2F = "Vector2";
+const string Vector3F = "Vector3";
+const string Vector4F = "Vector4";
+const string Vector2D = "Vector2d";
+const string Vector3D = "Vector3d";
+const string Vector4D = "Vector4d";
+static int MaxAxesForElement {get{return Element.Size<=2 ? MaxAxes:2;}}
+static string[] BinaryOperators = {
+	"+","-","*","/",
+};
+static string[] Axis = new string[]{"X","Y","Z","W",};
+static string[][] AxesArr = new string[MaxAxes][];
+static string[] Axes {
+	get{
+		if(AxesArr[NumAxes-1]==null){
+			AxesArr[NumAxes-1]=new string[NumAxes];
+			for(int i = NumAxes-1;i>=0;--i)AxesArr[NumAxes-1][i]=Axis[i];
+		}
+		return AxesArr[NumAxes-1];
+	}
+}
+static VectorElement Element;
+static VectorElement Other {
+	get{
+		if(Element!=null){
+			for(int i = Elements.Length-1;i>=0;--i){
+				if(Elements[i].Size==Element.Size && Elements[i] != Element){
+					return Elements[i];
+				}
+			}
+		}
+		return null;
+	}
+}
+static VectorElement SignedElement {
+	get{
+		return null == Element ? null : Element.Signed ? Element : Other;
+	}
+}
+static VectorElement UnsignedElement {
+	get{
+		return null == Element ? null : Element.Signed ? Other : Element;
+	}
+}
+
+public static readonly VectorElement[] Elements = {
+	new VectorElement{ Name = "int", Suffix="i", Size=4, Signed=true, },
+	new VectorElement{ Name = "uint", Suffix="u", Size=4, Signed=true, },
+	new VectorElement{ Name = "short", Suffix="s", Size=2, Signed=true, },
+	new VectorElement{ Name = "ushort", Suffix="w", Size=2, Signed=false, },
+	new VectorElement{ Name = "byte", Suffix="b", Size=1, Signed=true, },
+	new VectorElement{ Name = "sbyte", Suffix="c", Size=1, Signed=true, },
+};
+public class VectorElement {
+	public string Name, Suffix;
+	public int Size;
+	public bool Signed;
+}
+#>
